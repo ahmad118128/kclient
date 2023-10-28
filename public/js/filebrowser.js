@@ -2,6 +2,10 @@ var host = window.location.hostname;
 var port = window.location.port;
 var protocol = window.location.protocol;
 var path = window.location.pathname;
+var checkButtonId = "checkButton_";
+var downloadButtonId = "downloadButton_";
+var sendToScanButtonId = "downloadButton_";
+
 var socket = io(protocol + "//" + host + ":" + port, {
   path: path + "/socket.io",
 });
@@ -97,6 +101,7 @@ async function renderFiles(data) {
       let fileClean = file.replace("'", "|");
       let uniqueId = "downloadButton_" + "_" + files.indexOf(file);
       let uniqueIdCheckBtn = "checkButton_" + "_" + files.indexOf(file);
+      let buttonIndex = files.indexOf(file);
 
       let link = $("<td>")
         .addClass("file")
@@ -115,7 +120,7 @@ async function renderFiles(data) {
           )
           .text("Delete")
       );
-      let downloadBtn = $("<td>");
+      let downloadTd = $("<td>");
       // downloadBtn.append(
       //   $("<button>")
       //     .addClass("downloadButton")
@@ -130,24 +135,41 @@ async function renderFiles(data) {
       //     })
       //     .text("Download")
       // );
-      downloadBtn.append(
+      downloadTd.append(
         $("<button>")
           .addClass("checkFileIsClean")
           .attr({
-            id: uniqueIdCheckBtn,
+            id: checkButtonId + buttonIndex,
             onclick:
               "checkFileIsClean('" +
               directoryClean +
               "/" +
               fileClean +
               "','" +
-              uniqueIdCheckBtn +
+              buttonIndex +
               "');",
           })
           .text("Check Is Clean")
       );
 
-      for await (item of [link, type, del, downloadBtn]) {
+      // downloadTd.append(
+      //   $("<button>")
+      //     .addClass("sendToScanFile")
+      //     .attr({
+      //       id: sendToScanButtonId + buttonIndex,
+      //       onclick:
+      //         "sendToScanFile('" +
+      //         directoryClean +
+      //         "/" +
+      //         fileClean +
+      //         "','" +
+      //         buttonIndex +
+      //         "');",
+      //     })
+      //     .text("Send To Scan")
+      // );
+
+      for await (item of [link, type, del, downloadTd]) {
         tableRow.append(item);
       }
       table.append(tableRow);
@@ -180,13 +202,33 @@ function downloadFile(file, uniqueId) {
   // socket.emit("downloadfile", data);
 }
 
+// Send To Scan File
+function sendToScanFile(file, uniqueId) {
+  // console.log("uniqueId:", uniqueId);
+  // console.log("file:", file);
+  // let downloadBtn = $("#" + uniqueId);
+  // downloadBtn.attr("disable", true).text("Loading...");
+  // // downloadBtn.css({
+  // //   "background-color": "red",
+  // // });
+  // // displayError("click download file");
+  // file = file.replace("|", "'");
+  // var data = {
+  //   file: file,
+  //   scanStep: true,
+  //   downloadStep: false,
+  //   checkDownloadStep: false,
+  // };
+  // socket.emit("downloadfile", data);
+}
+
 // checkFileIsClean
-function checkFileIsClean(file, uniqueIdCheckBtn) {
+function checkFileIsClean(file, buttonIndex) {
+  console.log("run readyFileForDownload in client");
   socket.emit("checkFileIsClean", {
     file,
-    buttonId: uniqueIdCheckBtn,
+    buttonIndex,
   });
-  console.log("run readyFileForDownload in client");
   // let downloadBtn = $("#" + uniqueIdCheckBtn);
   // downloadBtn
   //   .css({
@@ -409,10 +451,56 @@ function errorClient(error) {
 }
 
 // Handle status check file is clean
-function responseCheckFileIsClean(data) {
-  console.log({ data });
-  // let response = data?.response;
-  // let buttonId = data?.buttonId;
+function responseCheckFileIsClean(res) {
+  console.log({ res });
+  let error = res?.error;
+  let buttonIndex = res?.buttonIndex;
+  // let data = res?.data;
+
+  if (error) {
+    alert(error);
+    return;
+  }
+  let button = $("#" + checkButtonId + buttonIndex);
+
+  switch (res?.step) {
+    case "CREATE_TO_SCAN":
+      button
+        .css({
+          "background-color": "blue",
+        })
+        .attr("disable", true)
+        .text("create file to scan")
+        .off("click");
+      break;
+
+    case "NOT_CLEAN":
+      button
+        .css({
+          "background-color": "red",
+        })
+        .attr("disable", true)
+        .text("not clean")
+        .off("click");
+      break;
+
+    case "CLEAN":
+      button
+        .css({
+          "background-color": "green",
+        })
+        .text("Download");
+      break;
+
+    case "PROCESSING":
+      button.attr("disable", true).text("processing ...").off("click");
+      break;
+
+    default:
+      break;
+  }
+
+  return;
 }
 
 // Incoming socket requests

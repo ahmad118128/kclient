@@ -44,6 +44,12 @@ button {
   background-color: rgb(9 2 2 / 0.6);
 }
 
+.sendToScanFile {
+  margin: 0px !important;
+  float: right;
+  background-color: rgba(75, 22, 22, 0.6);
+}
+
 .fileTable {
   background-color: green;
   border-collapse: collapse;

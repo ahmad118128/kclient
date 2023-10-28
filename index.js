@@ -184,13 +184,89 @@ io.on("connection", async function (socket) {
     getFiles(directory);
   }
 
+  // create file to scan
+  async function createFileToScan(res) {
+    console.log("run checkFileIsClean in node.", res);
+
+    let file = res.file;
+    let fileName = file.split("/").slice(-1)[0];
+    let buttonIndex = res?.buttonIndex;
+    let data = "";
+
+    send("checkFileIsClean", {
+      buttonIndex,
+      step: "CREATE_TO_SCAN",
+    });
+
+    // const options = {
+    //   hostname: ANALYZE_HOST,
+    //   port: ANALYZE_PORT,
+    //   path: "/analyze/scan/?file_name=" + fileName,
+    //   method: "GET",
+    //   headers: {
+    //     "Content-Type": "application/json",
+    //   },
+    // };
+    // custom_http
+    //   .get(options, function (response) {
+    //     // Data may be received in chunks, so you need to collect it
+    //     response.on("data", function (chunk) {
+    //       data += chunk;
+    //     });
+
+    //     // When the entire response has been received, the 'end' event will be triggered
+    //     response.on("end", function () {
+    //       if (data && typeof data === "string") {
+    //         let dataObj = JSON.parse(data);
+    //         if (Array.isArray(dataObj) && dataObj.length > 0) {
+    //           // created file and check result scan
+    //           if (dataObj[0]?.clamav_scanner_status &&  dataObj[0]?.clamav_scanner_status === 'FINISHED') {
+    //             // process is finished
+    //             if (dataObj[0]?.clamav_scan_result) {
+    //               // file in not clean
+    //               send("checkFileIsClean", {
+    //                 buttonIndex,
+    //                 step: "NOT_CLEAN",
+    //               });
+    //             }else{
+    //               // file is clean
+    //               send("checkFileIsClean", {
+    //                 buttonIndex,
+    //                 step: "CLEAN",
+    //               });
+    //             }
+
+    //           }else{
+    //             // process is not finished
+    //             send("checkFileIsClean", {
+    //               buttonIndex,
+    //               step: "PROCESSING",
+    //             });
+    //           }
+
+    //         }else{
+    //           // not created for scan
+    //         }
+    //       }
+
+    //     });
+    //   })
+    //   .on("error", function (error) {
+    //     // get request error
+    //     send("checkFileIsClean", {
+    //       buttonIndex,
+    //       error: error.message,
+    //     });
+    //   });
+  }
+
   // checkFileIsClean
   async function checkFileIsClean(res) {
     console.log("run checkFileIsClean in node.", res);
 
     let file = res.file;
     let fileName = file.split("/").slice(-1)[0];
-    let buttonId = res?.buttonId;
+    let buttonIndex = res?.buttonIndex;
     let data = "";
 
     const options = {
@@ -203,6 +279,21 @@ io.on("connection", async function (socket) {
       },
     };
 
+    // {
+    //   "id": 49,
+    //   "file": "http://192.168.2.20:8000/files/1.50_list_zfEMScX.png",
+    //   "file_name": "1.50_list_UO3iiJe.png",
+    //   "username": null,
+    //   "yara_scanner_status": "FINISHED",
+    //   "clamav_scanner_status": "FINISHED",
+    //   "yara_scan_summary": "{'matched_rules': [png]}",
+    //   "yara_scan_result": true,
+    //   "yara_error_message": null,
+    //   "clamav_scan_summary": "clamav did not find any viruses for this file",
+    //   "clamav_scan_result": false,
+    //   "clamav_error_message": null
+    // }
+
     custom_http
       .get(options, function (response) {
         // Data may be received in chunks, so you need to collect it
@@ -212,50 +303,49 @@ io.on("connection", async function (socket) {
 
         // When the entire response has been received, the 'end' event will be triggered
         response.on("end", function () {
-          send("checkFileIsClean", {
-            buttonId,
-            data,
-            errorMessage: null,
-          });
+          if (data && typeof data === "string") {
+            let dataObj = JSON.parse(data);
+            if (Array.isArray(dataObj) && dataObj.length > 0) {
+              // created file and check result scan
+              if (
+                dataObj[0]?.clamav_scanner_status &&
+                dataObj[0]?.clamav_scanner_status === "FINISHED"
+              ) {
+                // process is finished
+                if (dataObj[0]?.clamav_scan_result) {
+                  // file in not clean
+                  send("checkFileIsClean", {
+                    buttonIndex,
+                    step: "NOT_CLEAN",
+                  });
+                } else {
+                  // file is clean
+                  send("checkFileIsClean", {
+                    buttonIndex,
+                    step: "CLEAN",
+                  });
+                }
+              } else {
+                // process is not finished
+                send("checkFileIsClean", {
+                  buttonIndex,
+                  step: "PROCESSING",
+                });
+              }
+            } else {
+              // not created for scan
+              createFileToScan(res);
+            }
+          }
         });
       })
       .on("error", function (error) {
+        // get request error
         send("checkFileIsClean", {
-          buttonId,
-          data,
-          errorMessage: error.message,
+          buttonIndex,
+          error: error.message,
         });
       });
-
-    // const req = custom_http.request(
-    //   {
-    //     hostname: ANALYZE_HOST,
-    //     port: ANALYZE_PORT,
-    //     // path: "/analyze/scan?file_name=" + fileName,scan?file_name=1.50_list_UO3iiJe.png
-    //     path: "/analyze/scan?file_name=1.50_list_UO3iiJe.png",
-
-    //     method: "GET",
-    //   },
-    //   (res) => {
-    //     let data = "";
-
-    //     res.on("data", (chunk) => {
-    //       data += chunk;
-    //     });
-
-    //     res.on("end", () => {
-    //       console.log("response:", data);
-    //       response = data;
-    //     });
-    //   }
-    // );
-
-    // req.on("error", (error) => {
-    //   console.error("Request failed:", error);
-    //   errorMessage = error.message;
-    // });
-
-    // req.end();
   }
 
   // errorClient
