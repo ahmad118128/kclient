@@ -38,12 +38,15 @@ app.engine("html", require("ejs").renderFile);
 app.engine("json", require("ejs").renderFile);
 baseRouter.use("/public", express.static(__dirname + "/public"));
 baseRouter.use("/vnc", express.static("/usr/share/kasmvnc/www/"));
+
 baseRouter.get("/", function (req, res) {
   res.render(__dirname + "/public/index.html", { title: TITLE });
 });
+
 baseRouter.get("/favicon.ico", function (req, res) {
   res.sendFile(__dirname + "/public/favicon.ico");
 });
+
 baseRouter.get("/manifest.json", function (req, res) {
   res.render(__dirname + "/public/manifest.json", { title: TITLE });
 });
@@ -198,6 +201,27 @@ io.on("connection", async function (socket) {
       step: "CREATE_TO_SCAN",
     });
 
+    const formData = new FormData();
+    formData.append("field1", "value1");
+    formData.append("field2", "value2");
+    formData.append("field3", "value3");
+
+    const options = { method: "POST", body: formData };
+
+    const request = custom_http.request(
+      "http://example.com",
+      options,
+      (response) => {
+        console.log(response);
+      }
+    );
+
+    request.on("error", (error) => {
+      console.error(error);
+    });
+
+    request.end();
+
     // const options = {
     //   hostname: ANALYZE_HOST,
     //   port: ANALYZE_PORT,
@@ -279,73 +303,63 @@ io.on("connection", async function (socket) {
       },
     };
 
-    // {
-    //   "id": 49,
-    //   "file": "http://192.168.2.20:8000/files/1.50_list_zfEMScX.png",
-    //   "file_name": "1.50_list_UO3iiJe.png",
-    //   "username": null,
-    //   "yara_scanner_status": "FINISHED",
-    //   "clamav_scanner_status": "FINISHED",
-    //   "yara_scan_summary": "{'matched_rules': [png]}",
-    //   "yara_scan_result": true,
-    //   "yara_error_message": null,
-    //   "clamav_scan_summary": "clamav did not find any viruses for this file",
-    //   "clamav_scan_result": false,
-    //   "clamav_error_message": null
-    // }
+    send("checkFileIsClean", {
+      buttonIndex,
+      step: "CLEAN",
+    });
 
-    custom_http
-      .get(options, function (response) {
-        // Data may be received in chunks, so you need to collect it
-        response.on("data", function (chunk) {
-          data += chunk;
-        });
+    // custom_http
+    //   .get(options, function (response) {
+    //     // Data may be received in chunks, so you need to collect it
+    //     response.on("data", function (chunk) {
+    //       data += chunk;
+    //     });
 
-        // When the entire response has been received, the 'end' event will be triggered
-        response.on("end", function () {
-          if (data && typeof data === "string") {
-            let dataObj = JSON.parse(data);
-            if (Array.isArray(dataObj) && dataObj.length > 0) {
-              // created file and check result scan
-              if (
-                dataObj[0]?.clamav_scanner_status &&
-                dataObj[0]?.clamav_scanner_status === "FINISHED"
-              ) {
-                // process is finished
-                if (dataObj[0]?.clamav_scan_result) {
-                  // file in not clean
-                  send("checkFileIsClean", {
-                    buttonIndex,
-                    step: "NOT_CLEAN",
-                  });
-                } else {
-                  // file is clean
-                  send("checkFileIsClean", {
-                    buttonIndex,
-                    step: "CLEAN",
-                  });
-                }
-              } else {
-                // process is not finished
-                send("checkFileIsClean", {
-                  buttonIndex,
-                  step: "PROCESSING",
-                });
-              }
-            } else {
-              // not created for scan
-              createFileToScan(res);
-            }
-          }
-        });
-      })
-      .on("error", function (error) {
-        // get request error
-        send("checkFileIsClean", {
-          buttonIndex,
-          error: error.message,
-        });
-      });
+    //     // When the entire response has been received, the 'end' event will be triggered
+    //     response.on("end", function () {
+    //       if (data && typeof data === "string") {
+    //         let dataObj = JSON.parse(data);
+    //         if (Array.isArray(dataObj) && dataObj.length > 0) {
+    //           // created file and check result scan
+    //           if (
+    //             dataObj[0]?.clamav_scanner_status &&
+    //             dataObj[0]?.clamav_scanner_status === "FINISHED"
+    //           ) {
+    //             // process is finished
+    //             if (dataObj[0]?.clamav_scan_result) {
+    //               // file in not clean
+    //               send("checkFileIsClean", {
+    //                 buttonIndex,
+    //                 step: "NOT_CLEAN",
+    //               });
+    //             } else {
+    //               // file is clean
+    //               send("checkFileIsClean", {
+    //                 buttonIndex,
+    //                 step: "CLEAN",
+    //               });
+    //             }
+    //           } else {
+    //             // process is not finished
+    //             send("checkFileIsClean", {
+    //               buttonIndex,
+    //               step: "PROCESSING",
+    //             });
+    //           }
+    //         } else {
+    //           // not created for scan
+    //           createFileToScan(res);
+    //         }
+    //       }
+    //     });
+    //   })
+    //   .on("error", function (error) {
+    //     // get request error
+    //     send("checkFileIsClean", {
+    //       buttonIndex,
+    //       error: error.message,
+    //     });
+    //   });
   }
 
   // errorClient

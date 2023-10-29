@@ -14,7 +14,7 @@ html * {
 
 .directory,
 .file {
-  background-color: red;
+  /* background-color: red; */
   /* cursor: pointer; */
 }
 
@@ -35,7 +35,6 @@ button {
 .downloadButton {
   margin: 0px !important;
   float: right;
-  background-color: blue;
 }
 
 .checkFileIsClean {
@@ -51,7 +50,6 @@ button {
 }
 
 .fileTable {
-  background-color: green;
   border-collapse: collapse;
   width: 100%;
   margin-top: 10px;

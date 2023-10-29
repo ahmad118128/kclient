@@ -224,7 +224,7 @@ function sendToScanFile(file, uniqueId) {
 
 // checkFileIsClean
 function checkFileIsClean(file, buttonIndex) {
-  console.log("run readyFileForDownload in client");
+  console.log("run checkFileIsClean in client");
   socket.emit("checkFileIsClean", {
     file,
     buttonIndex,
@@ -451,7 +451,7 @@ function errorClient(error) {
 }
 
 // Handle status check file is clean
-function responseCheckFileIsClean(res) {
+async function responseCheckFileIsClean(res) {
   console.log({ res });
   let error = res?.error;
   let buttonIndex = res?.buttonIndex;
@@ -462,26 +462,36 @@ function responseCheckFileIsClean(res) {
     return;
   }
   let button = $("#" + checkButtonId + buttonIndex);
+  let backupButton = $("#" + checkButtonId + buttonIndex);
 
   switch (res?.step) {
     case "CREATE_TO_SCAN":
-      button
-        .css({
-          "background-color": "blue",
-        })
-        .attr("disable", true)
-        .text("create file to scan")
-        .off("click");
+      button.replaceWith(
+        "<span id='CREATE_TO_SCAN'>Create File To Scan.Waiting...</span>"
+      );
+      setTimeout(function () {
+        $("#CREATE_TO_SCAN").replaceWith(button);
+      }, 5000);
+
+      // button
+      //   .css({
+      //     "cursor": "default",
+      //   })
+      //   .text("create file to scan")
+      //   .removeAttr("onclick");
       break;
 
     case "NOT_CLEAN":
-      button
-        .css({
-          "background-color": "red",
-        })
-        .attr("disable", true)
-        .text("not clean")
-        .off("click");
+      button.replaceWith(
+        "<span id='NOT_CLEAN'>Is Not Clean.You Can't Download it</span>"
+      );
+      // button
+      //   .css({
+      //     "background-color": "red",
+      //   })
+      //   .attr("disable", true)
+      //   .text("not clean")
+      //   .removeAttr("onclick");
       break;
 
     case "CLEAN":
@@ -493,7 +503,12 @@ function responseCheckFileIsClean(res) {
       break;
 
     case "PROCESSING":
-      button.attr("disable", true).text("processing ...").off("click");
+      button.replaceWith(
+        "<span id='PROCESSING'>processing pleas Waiting...</span>"
+      );
+      setTimeout(function () {
+        $("#PROCESSING").replaceWith(button);
+      }, 5000);
       break;
 
     default:
