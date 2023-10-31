@@ -40,7 +40,10 @@ async function renderFiles(data) {
   let parentLink = $("<td>")
     .addClass("directory")
     .attr("onclick", "getFiles('" + parentFolder + "');")
-    .text("..");
+    .text("↵")
+    .css({
+      cursor: "pointer",
+    });
   let directoryClean = directory.replace("'", "|");
   if (directoryClean == "/") {
     directoryClean = "";
@@ -109,7 +112,10 @@ async function renderFiles(data) {
         //   "onclick",
         //   "downloadFile('" + directoryClean + "/" + fileClean + "');"
         // )
-        .text(file);
+        .text(file)
+        .css({
+          cursor: "pointer",
+        });
       let type = $("<td>").text("File");
       let del = $("<td>").append(
         $("<button>")
@@ -149,7 +155,7 @@ async function renderFiles(data) {
               buttonIndex +
               "');",
           })
-          .text("Check Is Clean")
+          .text("Download")
       );
 
       // downloadTd.append(
@@ -455,6 +461,7 @@ async function responseCheckFileIsClean(res) {
   console.log({ res });
   let error = res?.error;
   let buttonIndex = res?.buttonIndex;
+  let process = res?.process;
   // let data = res?.data;
 
   if (error) {
@@ -462,23 +469,15 @@ async function responseCheckFileIsClean(res) {
     return;
   }
   let button = $("#" + checkButtonId + buttonIndex);
-  let backupButton = $("#" + checkButtonId + buttonIndex);
 
   switch (res?.step) {
     case "CREATE_TO_SCAN":
       button.replaceWith(
-        "<span id='CREATE_TO_SCAN'>Create File To Scan.Waiting...</span>"
+        "<span id='CREATE_TO_SCAN'>Create File To Scan.Pleas Wait...</span>"
       );
       setTimeout(function () {
         $("#CREATE_TO_SCAN").replaceWith(button);
-      }, 5000);
-
-      // button
-      //   .css({
-      //     "cursor": "default",
-      //   })
-      //   .text("create file to scan")
-      //   .removeAttr("onclick");
+      }, 6000);
       break;
 
     case "NOT_CLEAN":
@@ -503,12 +502,21 @@ async function responseCheckFileIsClean(res) {
       break;
 
     case "PROCESSING":
+      // if (process) {
+      //   if (process !== 100) {
+      //     button.replaceWith(
+      //       `<span id='PROCESSING'>uploading, pleas Wait... ${process}% </span>`
+      //     );
+      //     $("#PROCESSING").replaceWith(button);
+      //   }
+      //   return;
+      // }
       button.replaceWith(
-        "<span id='PROCESSING'>processing pleas Waiting...</span>"
+        "<span id='PROCESSING'>processing, pleas Wait...</span>"
       );
       setTimeout(function () {
         $("#PROCESSING").replaceWith(button);
-      }, 5000);
+      }, 6000);
       break;
 
     default:

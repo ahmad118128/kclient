@@ -8,9 +8,14 @@ var TITLE = process.env.TITLE || "KasmVNC Client";
 var FM_HOME = process.env.FM_HOME || "/config";
 var ANALYZE_HOST = "192.168.2.20";
 var ANALYZE_PORT = 8000;
+var ANALYZE_PATH = "/analyze/scan/";
 
 //// Application Variables ////
 var socketIO = require("socket.io");
+const path = require("path");
+const axios = require("axios");
+
+const FormData = require("form-data");
 var express = require("express");
 var ejs = require("ejs");
 var app = require("express")();
@@ -33,6 +38,7 @@ pulse.on("error", function (error) {
   );
 });
 
+let isCleanFile = false;
 //// Server Paths Main ////
 app.engine("html", require("ejs").renderFile);
 app.engine("json", require("ejs").renderFile);
@@ -101,52 +107,13 @@ io.on("connection", async function (socket) {
   }
 
   // Send file to client
-  async function downloadFile(data) {
-    const file = data.file;
-    const scanStep = data.scanStep;
-    const downloadStep = data.downloadStep;
-    const checkDownloadStep = data.checkDownloadStep;
-
+  async function downloadFile(res) {
+    const file = res.file;
     let fileName = file.split("/").slice(-1)[0];
     let fileBuffer = await fsw.readFile(file);
-
-    console.log({
-      file,
-      scanStep,
-      downloadStep,
-      checkDownloadStep,
-    });
-
-    // const options = {
-    //   hostname: "192.168.2.68", // Change to your server's hostname or IP
-    //   port: 8001, // Change to your server's port
-    //   path: "/analyze/scan/", // The path to your endpoint
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/octet-stream", // Set the Content-Type based on your server's requirements
-    //     "Content-Length": fileBuffer.length,
-    //   },
-    // };
-
-    // const req = custom_http.request(options, (res) => {
-    //   let data = "";
-
-    //   res.on("data", (chunk) => {
-    //     data += chunk;
-    //   });
-
-    //   res.on("end", () => {
-    //     console.log("Response:", data);
-    //   });
-    // });
-
-    // req.on("error", (error) => {
-    //   console.error("Request failed:", error);
-    // });
-    // req.write(fileBuffer);
-    // req.end();
-
-    // send("sendfile", [fileBuffer, fileName]);
+    send("sendfile", [fileBuffer, fileName]);
+    const directoryPath = path.dirname(file);
+    deleteFiles([file, directoryPath]);
   }
 
   // Write client sent file
@@ -166,6 +133,7 @@ io.on("connection", async function (socket) {
 
   // Delete files
   async function deleteFiles(res) {
+    console.log("run deleteFiles");
     let item = res[0];
     let directory = res[1];
     item = item.replace("|", "'");
@@ -189,177 +157,189 @@ io.on("connection", async function (socket) {
 
   // create file to scan
   async function createFileToScan(res) {
-    console.log("run checkFileIsClean in node.", res);
-
-    let file = res.file;
-    let fileName = file.split("/").slice(-1)[0];
+    console.log("run createFileToScan in node.");
+    let url = "http://" + ANALYZE_HOST + ":" + ANALYZE_PORT + "/analyze/scan/";
+    let filePath = res.file;
     let buttonIndex = res?.buttonIndex;
-    let data = "";
+    let fileBuffer = "";
 
-    send("checkFileIsClean", {
-      buttonIndex,
-      step: "CREATE_TO_SCAN",
-    });
+    try {
+      fileBuffer = await fsw.readFile(filePath);
+    } catch (error) {
+      console.log("error on readFile", error);
+      send("errorClient", "Oops! you don't have permission");
+      return;
+    }
 
+    let fileStream = fs.createReadStream(filePath);
     const formData = new FormData();
-    formData.append("field1", "value1");
-    formData.append("field2", "value2");
-    formData.append("field3", "value3");
+    formData.append("file", fileStream);
 
-    const options = { method: "POST", body: formData };
-
-    const request = custom_http.request(
-      "http://example.com",
-      options,
-      (response) => {
-        console.log(response);
-      }
-    );
-
-    request.on("error", (error) => {
-      console.error(error);
-    });
-
-    request.end();
-
-    // const options = {
-    //   hostname: ANALYZE_HOST,
-    //   port: ANALYZE_PORT,
-    //   path: "/analyze/scan/?file_name=" + fileName,
-    //   method: "GET",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //   },
-    // };
-    // custom_http
-    //   .get(options, function (response) {
-    //     // Data may be received in chunks, so you need to collect it
-    //     response.on("data", function (chunk) {
-    //       data += chunk;
-    //     });
-
-    //     // When the entire response has been received, the 'end' event will be triggered
-    //     response.on("end", function () {
-    //       if (data && typeof data === "string") {
-    //         let dataObj = JSON.parse(data);
-    //         if (Array.isArray(dataObj) && dataObj.length > 0) {
-    //           // created file and check result scan
-    //           if (dataObj[0]?.clamav_scanner_status &&  dataObj[0]?.clamav_scanner_status === 'FINISHED') {
-    //             // process is finished
-    //             if (dataObj[0]?.clamav_scan_result) {
-    //               // file in not clean
-    //               send("checkFileIsClean", {
-    //                 buttonIndex,
-    //                 step: "NOT_CLEAN",
-    //               });
-    //             }else{
-    //               // file is clean
-    //               send("checkFileIsClean", {
-    //                 buttonIndex,
-    //                 step: "CLEAN",
-    //               });
-    //             }
-
-    //           }else{
-    //             // process is not finished
-    //             send("checkFileIsClean", {
-    //               buttonIndex,
-    //               step: "PROCESSING",
-    //             });
-    //           }
-
-    //         }else{
-    //           // not created for scan
-    //         }
-    //       }
-
-    //     });
-    //   })
-    //   .on("error", function (error) {
-    //     // get request error
-    //     send("checkFileIsClean", {
-    //       buttonIndex,
-    //       error: error.message,
-    //     });
-    //   });
+    await axios
+      .post(url, formData, {
+        headers: {
+          ...formData.getHeaders(), // Set the appropriate content-type for formData
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          send("checkFileIsClean", {
+            buttonIndex,
+            step: "PROCESSING",
+            process: percentCompleted,
+          });
+          console.log(`Progress: ${percentCompleted}%`);
+        },
+      })
+      .then((response) => {
+        send("checkFileIsClean", {
+          buttonIndex,
+          step: "PROCESSING",
+        });
+      })
+      .catch((error) => {
+        send("errorClient", error.message);
+      });
   }
 
   // checkFileIsClean
   async function checkFileIsClean(res) {
-    console.log("run checkFileIsClean in node.", res);
+    console.log("run checkFileIsClean in node.");
 
     let file = res.file;
     let fileName = file.split("/").slice(-1)[0];
+    let url = `http://${ANALYZE_HOST}:${ANALYZE_PORT}/analyze/scan/?file_name=${fileName}`;
     let buttonIndex = res?.buttonIndex;
-    let data = "";
 
-    const options = {
-      hostname: ANALYZE_HOST,
-      port: ANALYZE_PORT,
-      path: "/analyze/scan/?file_name=" + fileName,
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
+    await axios
+      .get(url, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+      .then(({ data }) => {
+        console.log({ data });
+        if (Array.isArray(data) && data.length > 0) {
+          const responseData = data[0];
+          if (
+            (responseData?.yara_scanner_status === "PROCESSING") |
+            (responseData?.clamav_scanner_status === "PROCESSING") |
+            (responseData?.antiviruses_scanner_status === "PROCESSING")
+          ) {
+            send("checkFileIsClean", {
+              buttonIndex,
+              step: "PROCESSING",
+            });
+            return;
+          }
+          if (responseData?.antiviruses_status_code === 200) {
+            if (responseData?.antiviruses_scan_result) {
+              // file is not clean
 
-    send("checkFileIsClean", {
-      buttonIndex,
-      step: "CLEAN",
-    });
+              const directoryPath = path.dirname(file);
+              deleteFiles([file, directoryPath]);
+              send(
+                "errorClient",
+                "Deleted File, because this file is not clean. "
+              );
+            } else {
+              // file is clean
+              downloadFile(res);
+            }
+          } else {
+            // antiviruses_status_code === 400 or else
+            if (responseData?.clamav_scan_result) {
+              // file is not clean
+              const directoryPath = path.dirname(file);
+              deleteFiles([file, directoryPath]);
+              send(
+                "errorClient",
+                "Deleted File, because this file is not clean. "
+              );
+            } else {
+              // file is clean
+              downloadFile(res);
+            }
+          }
+        } else {
+          // not created for scan
+          createFileToScan(res);
+        }
+      })
+      .catch((error) => {
+        send("checkFileIsClean", {
+          buttonIndex,
+          error: error.message,
+        });
+      });
 
-    // custom_http
-    //   .get(options, function (response) {
-    //     // Data may be received in chunks, so you need to collect it
-    //     response.on("data", function (chunk) {
-    //       data += chunk;
-    //     });
+    // try {
+    //   custom_http
+    //     .get(options, function (response) {
+    //       // Data may be received in chunks, so you need to collect it
+    //       response.on("data", function (chunk) {
+    //         data += chunk;
+    //       });
 
-    //     // When the entire response has been received, the 'end' event will be triggered
-    //     response.on("end", function () {
-    //       if (data && typeof data === "string") {
-    //         let dataObj = JSON.parse(data);
-    //         if (Array.isArray(dataObj) && dataObj.length > 0) {
-    //           // created file and check result scan
-    //           if (
-    //             dataObj[0]?.clamav_scanner_status &&
-    //             dataObj[0]?.clamav_scanner_status === "FINISHED"
-    //           ) {
-    //             // process is finished
-    //             if (dataObj[0]?.clamav_scan_result) {
-    //               // file in not clean
-    //               send("checkFileIsClean", {
-    //                 buttonIndex,
-    //                 step: "NOT_CLEAN",
-    //               });
+    //       // When the entire response has been received, the 'end' event will be triggered
+    //       response.on("end", function () {
+    //         console.log("end /analyze/scan/?file_name= request");
+    //         if (data && typeof data === "string") {
+    //           let dataObj = JSON.parse(data);
+    //           if (Array.isArray(dataObj) && dataObj.length > 0) {
+    //             // created file and check result scan
+    //             if (
+    //               dataObj[0]?.clamav_scanner_status &&
+    //               dataObj[0]?.clamav_scanner_status === "FINISHED"
+    //             ) {
+    //               // process is finished
+    //               if (dataObj[0]?.clamav_scan_result) {
+    //                 // file in not clean
+    //                 send("checkFileIsClean", {
+    //                   buttonIndex,
+    //                   step: "NOT_CLEAN",
+    //                 });
+    //                 return;
+    //               } else {
+    //                 // file is clean
+    //                 if (isCleanFile) {
+    //                   downloadFile(res);
+    //                   return;
+    //                 }
+    //                 send("checkFileIsClean", {
+    //                   buttonIndex,
+    //                   step: "CLEAN",
+    //                 });
+    //                 isCleanFile = true;
+    //                 return;
+    //               }
     //             } else {
-    //               // file is clean
+    //               // process is not finished
     //               send("checkFileIsClean", {
     //                 buttonIndex,
-    //                 step: "CLEAN",
+    //                 step: "PROCESSING",
     //               });
+    //               return;
     //             }
     //           } else {
-    //             // process is not finished
-    //             send("checkFileIsClean", {
-    //               buttonIndex,
-    //               step: "PROCESSING",
-    //             });
+    //             // not created for scan
+    //             createFileToScan(res);
     //           }
-    //         } else {
-    //           // not created for scan
-    //           createFileToScan(res);
     //         }
-    //       }
+    //       });
+    //     })
+    //     .on("error", function (error) {
+    //       // get request error
+    //       console.log("error in /analyze/scan/?file_name=");
+    //       send("checkFileIsClean", {
+    //         buttonIndex,
+    //         error: error.message,
+    //       });
     //     });
-    //   })
-    //   .on("error", function (error) {
-    //     // get request error
-    //     send("checkFileIsClean", {
-    //       buttonIndex,
-    //       error: error.message,
-    //     });
-    //   });
+    // } catch (error) {
+    //   console.log("error catch:", error);
+    // }
   }
 
   // errorClient
