@@ -180,17 +180,15 @@ io.on("connection", async function (socket) {
         headers: {
           ...formData.getHeaders(), // Set the appropriate content-type for formData
         },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          send("checkFileIsClean", {
-            buttonIndex,
-            step: "PROCESSING",
-            process: percentCompleted,
-          });
-          console.log(`Progress: ${percentCompleted}%`);
-        },
+        // onUploadProgress: (progressEvent) => {
+        //   const percentCompleted = (progressEvent.loaded / progressEvent.total) * 100;
+        //   send("checkFileIsClean", {
+        //     buttonIndex,
+        //     step: "PROCESSING",
+        //     process: percentCompleted.toFixed(2),
+        //   });
+        //   console.log(`Progress: ${percentCompleted.toFixed(2)}%`);
+        // },
       })
       .then((response) => {
         send("checkFileIsClean", {
@@ -222,44 +220,70 @@ io.on("connection", async function (socket) {
         console.log({ data });
         if (Array.isArray(data) && data.length > 0) {
           const responseData = data[0];
-          if (
-            (responseData?.yara_scanner_status === "PROCESSING") |
-            (responseData?.clamav_scanner_status === "PROCESSING") |
-            (responseData?.antiviruses_scanner_status === "PROCESSING")
-          ) {
+          const antivirusesScannerStatus =
+            responseData?.antiviruses_scanner_status;
+          const antivirusesStatusCode = responseData?.antiviruses_status_code;
+          const antivirusesScanResult = responseData?.antiviruses_scan_result;
+
+          const clamavScannerStatus = responseData?.clamav_scanner_status;
+          const clamavScanResult = responseData?.clamav_scan_result;
+
+          if (antivirusesScannerStatus === "IN_PROCESS") {
             send("checkFileIsClean", {
               buttonIndex,
               step: "PROCESSING",
             });
             return;
           }
-          if (responseData?.antiviruses_status_code === 200) {
-            if (responseData?.antiviruses_scan_result) {
-              // file is not clean
 
-              const directoryPath = path.dirname(file);
-              deleteFiles([file, directoryPath]);
-              send(
-                "errorClient",
-                "Deleted File, because this file is not clean. "
-              );
+          if (
+            antivirusesScannerStatus === "FINISHED" ||
+            antivirusesScannerStatus === "FAILED"
+          ) {
+            if (antivirusesStatusCode === 200) {
+              if (antivirusesScanResult) {
+                // file is malware
+                const directoryPath = path.dirname(file);
+                deleteFiles([file, directoryPath]);
+                send(
+                  "errorClient",
+                  "Deleted File, because this file is not clean. "
+                );
+              } else {
+                // file is safe
+                downloadFile(res);
+              }
             } else {
-              // file is clean
-              downloadFile(res);
-            }
-          } else {
-            // antiviruses_status_code === 400 or else
-            if (responseData?.clamav_scan_result) {
-              // file is not clean
-              const directoryPath = path.dirname(file);
-              deleteFiles([file, directoryPath]);
-              send(
-                "errorClient",
-                "Deleted File, because this file is not clean. "
-              );
-            } else {
-              // file is clean
-              downloadFile(res);
+              // antivirusesStatusCode is !200
+              if (clamavScannerStatus === "FAILED") {
+                // try again
+                send("errorClient", "scan is failed. try again");
+                return;
+              }
+
+              if (clamavScannerStatus === "IN_PROCESS") {
+                // processing
+                send("checkFileIsClean", {
+                  buttonIndex,
+                  step: "PROCESSING",
+                });
+                return;
+              }
+
+              if (clamavScannerStatus === "FINISHED") {
+                if (clamavScanResult) {
+                  // file is malware
+                  const directoryPath = path.dirname(file);
+                  deleteFiles([file, directoryPath]);
+                  send(
+                    "errorClient",
+                    "Deleted File, because this file is not clean. "
+                  );
+                } else {
+                  // file is safe
+                  downloadFile(res);
+                }
+              }
             }
           }
         } else {
@@ -273,73 +297,6 @@ io.on("connection", async function (socket) {
           error: error.message,
         });
       });
-
-    // try {
-    //   custom_http
-    //     .get(options, function (response) {
-    //       // Data may be received in chunks, so you need to collect it
-    //       response.on("data", function (chunk) {
-    //         data += chunk;
-    //       });
-
-    //       // When the entire response has been received, the 'end' event will be triggered
-    //       response.on("end", function () {
-    //         console.log("end /analyze/scan/?file_name= request");
-    //         if (data && typeof data === "string") {
-    //           let dataObj = JSON.parse(data);
-    //           if (Array.isArray(dataObj) && dataObj.length > 0) {
-    //             // created file and check result scan
-    //             if (
-    //               dataObj[0]?.clamav_scanner_status &&
-    //               dataObj[0]?.clamav_scanner_status === "FINISHED"
-    //             ) {
-    //               // process is finished
-    //               if (dataObj[0]?.clamav_scan_result) {
-    //                 // file in not clean
-    //                 send("checkFileIsClean", {
-    //                   buttonIndex,
-    //                   step: "NOT_CLEAN",
-    //                 });
-    //                 return;
-    //               } else {
-    //                 // file is clean
-    //                 if (isCleanFile) {
-    //                   downloadFile(res);
-    //                   return;
-    //                 }
-    //                 send("checkFileIsClean", {
-    //                   buttonIndex,
-    //                   step: "CLEAN",
-    //                 });
-    //                 isCleanFile = true;
-    //                 return;
-    //               }
-    //             } else {
-    //               // process is not finished
-    //               send("checkFileIsClean", {
-    //                 buttonIndex,
-    //                 step: "PROCESSING",
-    //               });
-    //               return;
-    //             }
-    //           } else {
-    //             // not created for scan
-    //             createFileToScan(res);
-    //           }
-    //         }
-    //       });
-    //     })
-    //     .on("error", function (error) {
-    //       // get request error
-    //       console.log("error in /analyze/scan/?file_name=");
-    //       send("checkFileIsClean", {
-    //         buttonIndex,
-    //         error: error.message,
-    //       });
-    //     });
-    // } catch (error) {
-    //   console.log("error catch:", error);
-    // }
   }
 
   // errorClient
