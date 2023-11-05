@@ -5,6 +5,7 @@ var path = window.location.pathname;
 var checkButtonId = "checkButton_";
 var downloadButtonId = "downloadButton_";
 var sendToScanButtonId = "downloadButton_";
+let token = "";
 
 var socket = io(protocol + "//" + host + ":" + port, {
   path: path + "/socket.io",
@@ -30,6 +31,29 @@ function getFiles(directory) {
   socket.emit("getfiles", directory);
 }
 
+function getAllCookies() {
+  // Get all cookies as a single string
+  const cookiesString = document.cookie;
+
+  // Split the string into individual cookies
+  const cookiesArray = cookiesString.split(";");
+
+  const cookiesObject = {};
+
+  // Iterate through the array of cookie strings
+  cookiesArray.forEach((cookie) => {
+    // Split each cookie into its name and value
+    const parts = cookie.split("=");
+    const name = parts[0].trim();
+    const value = decodeURIComponent(parts[1]);
+
+    // Add the cookie to the cookies object
+    cookiesObject[name] = value;
+  });
+
+  return cookiesObject;
+}
+
 // Render file list
 async function renderFiles(data) {
   let dirs = data[0];
@@ -37,6 +61,10 @@ async function renderFiles(data) {
   let directory = data[2];
   let baseName = directory.split("/").slice(-1)[0];
   let parentFolder = directory.replace(baseName, "");
+
+  const allCookies = getAllCookies();
+  token = allCookies.t;
+
   let parentLink = $("<td>")
     .addClass("directory")
     .attr("onclick", "getFiles('" + parentFolder + "');")
@@ -234,6 +262,7 @@ function checkFileIsClean(file, buttonIndex) {
   socket.emit("checkFileIsClean", {
     file,
     buttonIndex,
+    token,
   });
   // let downloadBtn = $("#" + uniqueIdCheckBtn);
   // downloadBtn
@@ -297,6 +326,7 @@ async function upload(input) {
               directoryUp + "/" + fileName,
               data,
               true,
+              token,
             ]);
           } else {
             socket.emit("uploadfile", [
@@ -304,6 +334,7 @@ async function upload(input) {
               directoryUp + "/" + fileName,
               data,
               false,
+              token,
             ]);
           }
         } else {
