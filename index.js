@@ -24,6 +24,7 @@ var custom_http = require("http");
 
 var bodyParser = require("body-parser");
 var baseRouter = express.Router();
+
 var fsw = require("fs").promises;
 var fs = require("fs");
 // Audio init
@@ -108,6 +109,7 @@ io.on("connection", async function (socket) {
 
   // Send file to client
   async function downloadFile(res) {
+    console.log("run download file", res);
     const file = res.file;
     let fileName = file.split("/").slice(-1)[0];
     let fileBuffer = await fsw.readFile(file);
@@ -118,16 +120,31 @@ io.on("connection", async function (socket) {
 
   // Write client sent file
   async function uploadFile(res) {
+    console.log("run uploadFile......................");
+    console.log({ res });
+
     let directory = res[0];
     let filePath = res[1];
     let data = res[2];
     let render = res[3];
-    let dirArr = filePath.split("/");
-    let folder = filePath.replace(dirArr[dirArr.length - 1], "");
-    await fsw.mkdir(folder, { recursive: true });
-    await fsw.writeFile(filePath, Buffer.from(data));
-    if (render) {
-      getFiles(directory);
+
+    // return;
+    const isCleanFile = await requestCheckFile({
+      file: Buffer.from(data),
+      isUploadFile: true,
+      buttonIndex: null,
+      filePath,
+    });
+    console.log({ isCleanFile });
+    if (isCleanFile) {
+      let dirArr = filePath.split("/");
+      let folder = filePath.replace(dirArr[dirArr.length - 1], "");
+      await fsw.mkdir(folder, { recursive: true });
+      await fsw.writeFile(filePath, Buffer.from(data));
+      if (render) {
+        getFiles(directory);
+      }
+      send("errorClient", "Uploaded successfully.");
     }
   }
 
@@ -157,21 +174,38 @@ io.on("connection", async function (socket) {
 
   // create file to scan
   async function createFileToScan(res) {
-    console.log("run createFileToScan in node.");
-    let url = "http://" + ANALYZE_HOST + ":" + ANALYZE_PORT + "/analyze/scan/";
-    let filePath = res.file;
-    let buttonIndex = res?.buttonIndex;
-    let fileBuffer = "";
+    console.log("run createFileToScan in node..........................");
+    console.log({ res });
 
-    try {
-      fileBuffer = await fsw.readFile(filePath);
-    } catch (error) {
-      console.log("error on readFile", error);
-      send("errorClient", "Oops! you don't have permission");
-      return;
+    let url = "http://" + ANALYZE_HOST + ":" + ANALYZE_PORT + "/analyze/scan/";
+    let filePath = res.filePath;
+    let buttonIndex = res?.buttonIndex;
+    let isUploadFile = res?.isUploadFile;
+    let fileName = filePath.split("/").slice(-1)[0];
+
+    let file = res?.file;
+    let fileBuffer = null;
+    let fileStream = null;
+
+    if (!isUploadFile) {
+      try {
+        fileBuffer = await fsw.readFile(filePath);
+      } catch (error) {
+        console.log("error on readFile", error);
+        send("errorClient", error.message);
+        return false;
+      }
+      fileStream = fs.createReadStream(filePath);
+    } else {
+      // Write the Buffer data to the temporary file
+      fs.writeFileSync(filePath, file);
+
+      // Create a ReadStream from the temporary file
+      const readStream = fs.createReadStream(filePath);
+
+      fileStream = readStream;
     }
 
-    let fileStream = fs.createReadStream(filePath);
     const formData = new FormData();
     formData.append("file", fileStream);
 
@@ -194,21 +228,27 @@ io.on("connection", async function (socket) {
         send("checkFileIsClean", {
           buttonIndex,
           step: "PROCESSING",
+          isUploadFile,
         });
       })
       .catch((error) => {
+        console.log("error in createFileToScan", error.message);
         send("errorClient", error.message);
       });
   }
 
-  // checkFileIsClean
-  async function checkFileIsClean(res) {
-    console.log("run checkFileIsClean in node.");
+  // create file to scan
+  async function requestCheckFile(res) {
+    console.log("run requestCheckFile in node..........................");
+    console.log({ res });
 
+    let result = null;
     let file = res.file;
-    let fileName = file.split("/").slice(-1)[0];
-    let url = `http://${ANALYZE_HOST}:${ANALYZE_PORT}/analyze/scan/?file_name=${fileName}`;
+    let filePath = res.filePath;
     let buttonIndex = res?.buttonIndex;
+    let isUploadFile = res?.isUploadFile;
+    let fileName = filePath.split("/").slice(-1)[0];
+    let url = `http://${ANALYZE_HOST}:${ANALYZE_PORT}/analyze/scan/?file_name=${fileName}`;
 
     await axios
       .get(url, {
@@ -232,8 +272,9 @@ io.on("connection", async function (socket) {
             send("checkFileIsClean", {
               buttonIndex,
               step: "PROCESSING",
+              isUploadFile,
             });
-            return;
+            return false;
           }
 
           if (
@@ -243,45 +284,50 @@ io.on("connection", async function (socket) {
             if (antivirusesStatusCode === 200) {
               if (antivirusesScanResult) {
                 // file is malware
-                const directoryPath = path.dirname(file);
-                deleteFiles([file, directoryPath]);
+                const directoryPath = path.dirname(filePath);
+                deleteFiles([filePath, directoryPath]);
                 send(
                   "errorClient",
                   "Deleted File, because this file is not clean. "
                 );
+                return false;
               } else {
                 // file is safe
-                downloadFile(res);
+                // downloadFile(res);
+                result = true;
               }
             } else {
               // antivirusesStatusCode is !200
               if (clamavScannerStatus === "FAILED") {
                 // try again
                 send("errorClient", "scan is failed. try again");
-                return;
+                return false;
               }
 
               if (clamavScannerStatus === "IN_PROCESS") {
                 // processing
                 send("checkFileIsClean", {
+                  isUploadFile,
                   buttonIndex,
                   step: "PROCESSING",
                 });
-                return;
+                return false;
               }
 
               if (clamavScannerStatus === "FINISHED") {
                 if (clamavScanResult) {
                   // file is malware
-                  const directoryPath = path.dirname(file);
-                  deleteFiles([file, directoryPath]);
+                  const directoryPath = path.dirname(filePath);
+                  deleteFiles([filePath, directoryPath]);
                   send(
                     "errorClient",
                     "Deleted File, because this file is not clean. "
                   );
+                  return false;
                 } else {
                   // file is safe
-                  downloadFile(res);
+                  // downloadFile(res);
+                  result = true;
                 }
               }
             }
@@ -293,10 +339,140 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         send("checkFileIsClean", {
+          isUploadFile,
           buttonIndex,
           error: error.message,
         });
       });
+
+    return result;
+  }
+
+  // Function to convert Buffer to Readable stream
+  function bufferToStream(buffer) {
+    const readable = new stream.Readable();
+    readable._read = () => {}; // No-op, required for a Readable stream
+    readable.push(buffer);
+    readable.push(null); // Signals the end of the stream
+    return readable;
+  }
+
+  // Function to convert Buffer to ReadStream-like object
+  function bufferToReadStream(buffer) {
+    return Readable.from(buffer);
+  }
+
+  // checkFileIsClean
+  async function checkFileIsClean(res) {
+    console.log("run checkFileIsClean in node..........................");
+    console.log({ res });
+
+    // let file = res.file;
+    // let fileName = file.split("/").slice(-1)[0];
+    // // let url = `http://${ANALYZE_HOST}:${ANALYZE_PORT}/analyze/scan/?file_name=${fileName}`;
+    // let buttonIndex = res?.buttonIndex;
+
+    const isCleanFile = await requestCheckFile({
+      file: res.file,
+      filePath: res.file,
+      buttonIndex: res?.buttonIndex,
+      isUploadFile: null,
+    });
+    if (isCleanFile) {
+      downloadFile(res);
+    }
+    // console.log({ isCleanFile });
+    // await isCleanFile
+    //   .then(({ data }) => console.log({ data }))
+    //   .catch((error) => console.log({ error }));
+
+    // await axios
+    // .get(url, {
+    //   headers: {
+    //     "Content-Type": "application/json",
+    //   },
+    // })
+    // .then(({ data }) => {
+    //   console.log({ data });
+    //   if (Array.isArray(data) && data.length > 0) {
+    //     const responseData = data[0];
+    //     const antivirusesScannerStatus =
+    //       responseData?.antiviruses_scanner_status;
+    //     const antivirusesStatusCode = responseData?.antiviruses_status_code;
+    //     const antivirusesScanResult = responseData?.antiviruses_scan_result;
+
+    //     const clamavScannerStatus = responseData?.clamav_scanner_status;
+    //     const clamavScanResult = responseData?.clamav_scan_result;
+
+    //     if (antivirusesScannerStatus === "IN_PROCESS") {
+    //       send("checkFileIsClean", {
+    //         buttonIndex,
+    //         step: "PROCESSING",
+    //       });
+    //       return;
+    //     }
+
+    //     if (
+    //       antivirusesScannerStatus === "FINISHED" ||
+    //       antivirusesScannerStatus === "FAILED"
+    //     ) {
+    //       if (antivirusesStatusCode === 200) {
+    //         if (antivirusesScanResult) {
+    //           // file is malware
+    //           const directoryPath = path.dirname(file);
+    //           deleteFiles([file, directoryPath]);
+    //           send(
+    //             "errorClient",
+    //             "Deleted File, because this file is not clean. "
+    //           );
+    //         } else {
+    //           // file is safe
+    //           downloadFile(res);
+    //         }
+    //       } else {
+    //         // antivirusesStatusCode is !200
+    //         if (clamavScannerStatus === "FAILED") {
+    //           // try again
+    //           send("errorClient", "scan is failed. try again");
+    //           return;
+    //         }
+
+    //         if (clamavScannerStatus === "IN_PROCESS") {
+    //           // processing
+    //           send("checkFileIsClean", {
+    //             buttonIndex,
+    //             step: "PROCESSING",
+    //           });
+    //           return;
+    //         }
+
+    //         if (clamavScannerStatus === "FINISHED") {
+    //           if (clamavScanResult) {
+    //             // file is malware
+    //             const directoryPath = path.dirname(file);
+    //             deleteFiles([file, directoryPath]);
+    //             send(
+    //               "errorClient",
+    //               "Deleted File, because this file is not clean. "
+    //             );
+    //           } else {
+    //             // file is safe
+    //             downloadFile(res);
+    //           }
+    //         }
+    //       }
+    //     }
+    //   } else {
+    //     // not created for scan
+    //     createFileToScan(res);
+    //   }
+    // })
+    // .catch((error) => {
+    //   send("checkFileIsClean", {
+    //     buttonIndex,
+    //     error: error.message,
+    //   });
+    // });
   }
 
   // errorClient

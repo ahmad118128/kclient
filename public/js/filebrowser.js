@@ -277,15 +277,20 @@ async function upload(input) {
     directoryUp = directory;
   }
   if (input.files && input.files[0]) {
-    $("#filebrowser").empty();
-    $("#filebrowser").append($("<div>").attr("id", "loading"));
+    // $("#filebrowser").empty();
+    // $("#filebrowser").append($("<div>").attr("id", "loading"));
+
     for await (let file of input.files) {
       let reader = new FileReader();
       reader.onload = async function (e) {
         let fileName = file.name;
         if (e.total < 200000000) {
           let data = e.target.result;
-          $("#filebrowser").append($("<div>").text("Uploading " + fileName));
+
+          console.log({ data });
+
+          // $("#filebrowser").append($("<div>").text("Uploading " + fileName));
+
           if (file == input.files[input.files.length - 1]) {
             socket.emit("uploadfile", [
               directory,
@@ -462,13 +467,16 @@ async function responseCheckFileIsClean(res) {
   let error = res?.error;
   let buttonIndex = res?.buttonIndex;
   let process = res?.process;
-  // let data = res?.data;
+  let isUploadFile = res?.isUploadFile;
 
   if (error) {
     alert(error);
     return;
   }
-  let button = $("#" + checkButtonId + buttonIndex);
+
+  let button = !isUploadFile
+    ? $("#" + checkButtonId + buttonIndex)
+    : $("#uploadFileButton");
 
   switch (res?.step) {
     case "CREATE_TO_SCAN":
@@ -516,7 +524,12 @@ async function responseCheckFileIsClean(res) {
       );
       setTimeout(function () {
         $("#PROCESSING").replaceWith(button);
+        if (isUploadFile) {
+          // reset input for brows file again
+          $("#uploadInput").val(null);
+        }
       }, 6000);
+
       break;
 
     default:
