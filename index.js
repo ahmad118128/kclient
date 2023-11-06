@@ -6,10 +6,8 @@ var PASSWORD = process.env.PASSWORD || "abc";
 var SUBFOLDER = process.env.SUBFOLDER || "/";
 var TITLE = process.env.TITLE || "KasmVNC Client";
 var FM_HOME = process.env.FM_HOME || "/config";
-var ANALYZE_HOST = "192.168.2.20";
-var ACCESS_USER_URL = "http://192.168.2.21:8000/users/profile/";
-var ANALYZE_PORT = 8000;
-var ANALYZE_PATH = "/analyze/scan/";
+var FILE_SERVER_HOST = process.env.FILE_SERVER_HOST || "http://localhost:8001";
+var MANAGER_HOST = process.env.MANAGER_HOST || "http://localhost:8000";
 
 //// Application Variables ////
 var socketIO = require("socket.io");
@@ -107,15 +105,38 @@ io.on("connection", async function (socket) {
   }
 
   // check access user
-  async function checkAccessUser(token) {
+  async function checkAccessUser() {
+    const loginData = await axios
+      .post(
+        `${MANAGER_HOST}/users/login/`,
+        {
+          email: CUSTOM_USER,
+          password: PASSWORD,
+          is_admin: false,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then(({ data }) => {
+        return data;
+      })
+      .catch((error) => {
+        console.log({ error });
+        send("errorClient", error.message);
+      });
+
+    const token = loginData.access_token;
     return await axios
-      .get(ACCESS_USER_URL, {
+      .get(`${MANAGER_HOST}/users/profile/`, {
         headers: {
-          // "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
       })
       .then(({ data }) => {
+        console.log("get 200 in checkAccessUser");
         return data;
 
         // clipboard_up: false,
@@ -129,7 +150,7 @@ io.on("connection", async function (socket) {
 
   // Send file to client
   async function downloadFile(res) {
-    console.log("run download file", res);
+    console.log("run download file");
     const file = res.file;
     let fileName = file.split("/").slice(-1)[0];
     let fileBuffer = await fsw.readFile(file);
@@ -141,38 +162,41 @@ io.on("connection", async function (socket) {
   // Write client sent file
   async function uploadFile(res) {
     console.log("run uploadFile......................");
-    console.log({ res });
-
     let directory = res[0];
     let filePath = res[1];
     let data = res[2];
     let render = res[3];
-    let token = res[4];
 
-    const accessUser = await checkAccessUser(token);
+    const accessUser = await checkAccessUser();
 
-    if (!accessUser.can_upload_file) {
-      send("errorClient", "Ops! you don't have permission for upload file.");
-      return;
-    }
+    switch (accessUser?.can_upload_file) {
+      case true:
+        const isCleanFile = await requestCheckFile({
+          file: Buffer.from(data),
+          isUploadFile: true,
+          buttonIndex: null,
+          filePath,
+        });
+        console.log({ isCleanFile });
+        if (isCleanFile) {
+          let dirArr = filePath.split("/");
+          let folder = filePath.replace(dirArr[dirArr.length - 1], "");
+          await fsw.mkdir(folder, { recursive: true });
+          await fsw.writeFile(filePath, Buffer.from(data));
+          if (render) {
+            getFiles(directory);
+          }
+          send("errorClient", "Uploaded successfully.");
+        }
+        break;
 
-    // return;
-    const isCleanFile = await requestCheckFile({
-      file: Buffer.from(data),
-      isUploadFile: true,
-      buttonIndex: null,
-      filePath,
-    });
-    console.log({ isCleanFile });
-    if (isCleanFile) {
-      let dirArr = filePath.split("/");
-      let folder = filePath.replace(dirArr[dirArr.length - 1], "");
-      await fsw.mkdir(folder, { recursive: true });
-      await fsw.writeFile(filePath, Buffer.from(data));
-      if (render) {
-        getFiles(directory);
-      }
-      send("errorClient", "Uploaded successfully.");
+      case false:
+        send("errorClient", "Ops! you don't have permission for upload file.");
+        break;
+
+      default:
+        send("errorClient", "Ops! contact support.");
+        break;
     }
   }
 
@@ -203,16 +227,15 @@ io.on("connection", async function (socket) {
   // create file to scan
   async function createFileToScan(res) {
     console.log("run createFileToScan in node..........................");
-    console.log({ res });
+    // console.log({ res });
 
-    let url = "http://" + ANALYZE_HOST + ":" + ANALYZE_PORT + "/analyze/scan/";
+    let url = `${FILE_SERVER_HOST}/analyze/scan/`;
+
     let filePath = res.filePath;
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
-    let fileName = filePath.split("/").slice(-1)[0];
 
     let file = res?.file;
-    let fileBuffer = null;
     let fileStream = null;
 
     if (!isUploadFile) {
@@ -274,15 +297,12 @@ io.on("connection", async function (socket) {
   // create file to scan
   async function requestCheckFile(res) {
     console.log("run requestCheckFile in node..........................");
-    console.log({ res });
-
     let result = null;
-    let file = res.file;
     let filePath = res.filePath;
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
     let fileName = filePath.split("/").slice(-1)[0];
-    let url = `http://${ANALYZE_HOST}:${ANALYZE_PORT}/analyze/scan/?file_name=${fileName}`;
+    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}`;
 
     await axios
       .get(url, {
@@ -295,7 +315,8 @@ io.on("connection", async function (socket) {
         },
       })
       .then(({ data }) => {
-        console.log({ data });
+        console.log("get 200 in requestCheckFile");
+
         if (Array.isArray(data) && data.length > 0) {
           const responseData = data[0];
           const antivirusesScannerStatus =
@@ -376,41 +397,42 @@ io.on("connection", async function (socket) {
         }
       })
       .catch((error) => {
-        send("checkFileIsClean", {
-          isUploadFile,
-          buttonIndex,
-          error: error.message,
-        });
+        send("errorClient", error.message);
       });
 
     return result;
   }
 
-  // Function to convert Buffer to ReadStream-like object
-  function bufferToReadStream(buffer) {
-    return Readable.from(buffer);
-  }
-
   // checkFileIsClean
   async function checkFileIsClean(res) {
     console.log("run checkFileIsClean in node..........................");
-    console.log({ res });
+    // console.log({ res });
 
-    const accessUser = await checkAccessUser(res.token);
+    const accessUser = await checkAccessUser();
 
-    if (!accessUser.can_download_file) {
-      send("errorClient", "Ops! you don't have permission for download file.");
-      return;
-    }
+    switch (accessUser?.can_download_file) {
+      case true:
+        const isCleanFile = await requestCheckFile({
+          file: res.file,
+          filePath: res.file,
+          buttonIndex: res?.buttonIndex,
+          isUploadFile: null,
+        });
+        if (isCleanFile) {
+          downloadFile(res);
+        }
+        break;
 
-    const isCleanFile = await requestCheckFile({
-      file: res.file,
-      filePath: res.file,
-      buttonIndex: res?.buttonIndex,
-      isUploadFile: null,
-    });
-    if (isCleanFile) {
-      downloadFile(res);
+      case false:
+        send(
+          "errorClient",
+          "Ops! you don't have permission for download file."
+        );
+        break;
+
+      default:
+        send("errorClient", "Ops! contact support.");
+        break;
     }
   }
 

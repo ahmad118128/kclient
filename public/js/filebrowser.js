@@ -5,7 +5,6 @@ var path = window.location.pathname;
 var checkButtonId = "checkButton_";
 var downloadButtonId = "downloadButton_";
 var sendToScanButtonId = "downloadButton_";
-let token = "";
 
 var socket = io(protocol + "//" + host + ":" + port, {
   path: path + "/socket.io",
@@ -63,7 +62,6 @@ async function renderFiles(data) {
   let parentFolder = directory.replace(baseName, "");
 
   const allCookies = getAllCookies();
-  token = allCookies.t;
 
   let parentLink = $("<td>")
     .addClass("directory")
@@ -262,7 +260,6 @@ function checkFileIsClean(file, buttonIndex) {
   socket.emit("checkFileIsClean", {
     file,
     buttonIndex,
-    token,
   });
   // let downloadBtn = $("#" + uniqueIdCheckBtn);
   // downloadBtn
@@ -299,6 +296,8 @@ function sendFile(res) {
 
 // Upload files to current directory
 async function upload(input) {
+  var $iframe = $("#daasIframe");
+
   let directory = $("#filebrowser").data("directory");
   if (directory == "/") {
     directoryUp = "";
@@ -316,8 +315,6 @@ async function upload(input) {
         if (e.total < 200000000) {
           let data = e.target.result;
 
-          console.log({ data });
-
           // $("#filebrowser").append($("<div>").text("Uploading " + fileName));
 
           if (file == input.files[input.files.length - 1]) {
@@ -326,7 +323,6 @@ async function upload(input) {
               directoryUp + "/" + fileName,
               data,
               true,
-              token,
             ]);
           } else {
             socket.emit("uploadfile", [
@@ -334,7 +330,6 @@ async function upload(input) {
               directoryUp + "/" + fileName,
               data,
               false,
-              token,
             ]);
           }
         } else {
