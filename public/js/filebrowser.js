@@ -32,6 +32,7 @@ function getFiles(directory) {
 
 // Render file list
 async function renderFiles(data) {
+  console.log("render Files");
   let dirs = data[0];
   let files = data[1];
   let directory = data[2];
@@ -79,7 +80,10 @@ async function renderFiles(data) {
       let link = $("<td>")
         .addClass("directory")
         .attr("onclick", "getFiles('" + directoryClean + "/" + dirClean + "');")
-        .text(dir);
+        .text(dir)
+        .css({
+          cursor: "pointer",
+        });
       let type = $("<td>").text("Dir");
       let del = $("<td>").append(
         $("<button>")
@@ -105,9 +109,7 @@ async function renderFiles(data) {
       let fileClean = file.replace("'", "|");
       let buttonIndex = files.indexOf(file);
 
-      let link = $("<td>").addClass("file").text(file).css({
-        cursor: "pointer",
-      });
+      let link = $("<td>").addClass("file").text(file);
       let type = $("<td>").text("File");
       let del = $("<td>").append(
         $("<button>")
@@ -141,6 +143,19 @@ async function renderFiles(data) {
       }
       table.append(tableRow);
     }
+  }
+
+  if ($("#refreshButton").length === 0) {
+    // add button refresh
+    let refreshButton = $("<button>", {
+      id: "refreshButton",
+      text: "Refresh",
+      click: function () {
+        // render again
+        renderFiles(data);
+      },
+    });
+    $("#buttons").append(refreshButton);
   }
 }
 
