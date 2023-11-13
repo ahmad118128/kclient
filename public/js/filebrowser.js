@@ -32,7 +32,6 @@ function getFiles(directory) {
 
 // Render file list
 async function renderFiles(data) {
-  console.log("render Files");
   let dirs = data[0];
   let files = data[1];
   let directory = data[2];
