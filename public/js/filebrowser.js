@@ -21,36 +21,13 @@ socket.on("connect", function () {
 function getFiles(directory) {
   directory = directory.replace("//", "/");
   directory = directory.replace("|", "'");
-  let directoryClean = directory.replace("'", "|");
+  // let directoryClean = directory.replace("'", "|");
   if (directory !== "/" && directory.endsWith("/")) {
     directory = directory.slice(0, -1);
   }
   $("#filebrowser").empty();
   $("#filebrowser").append($("<div>").attr("id", "loading"));
   socket.emit("getfiles", directory);
-}
-
-function getAllCookies() {
-  // Get all cookies as a single string
-  const cookiesString = document.cookie;
-
-  // Split the string into individual cookies
-  const cookiesArray = cookiesString.split(";");
-
-  const cookiesObject = {};
-
-  // Iterate through the array of cookie strings
-  cookiesArray.forEach((cookie) => {
-    // Split each cookie into its name and value
-    const parts = cookie.split("=");
-    const name = parts[0].trim();
-    const value = decodeURIComponent(parts[1]);
-
-    // Add the cookie to the cookies object
-    cookiesObject[name] = value;
-  });
-
-  return cookiesObject;
 }
 
 // Render file list
@@ -60,8 +37,6 @@ async function renderFiles(data) {
   let directory = data[2];
   let baseName = directory.split("/").slice(-1)[0];
   let parentFolder = directory.replace(baseName, "");
-
-  const allCookies = getAllCookies();
 
   let parentLink = $("<td>")
     .addClass("directory")
@@ -128,20 +103,11 @@ async function renderFiles(data) {
     for await (let file of files) {
       let tableRow = $("<tr>");
       let fileClean = file.replace("'", "|");
-      let uniqueId = "downloadButton_" + "_" + files.indexOf(file);
-      let uniqueIdCheckBtn = "checkButton_" + "_" + files.indexOf(file);
       let buttonIndex = files.indexOf(file);
 
-      let link = $("<td>")
-        .addClass("file")
-        // .attr( // disable click file name for download
-        //   "onclick",
-        //   "downloadFile('" + directoryClean + "/" + fileClean + "');"
-        // )
-        .text(file)
-        .css({
-          cursor: "pointer",
-        });
+      let link = $("<td>").addClass("file").text(file).css({
+        cursor: "pointer",
+      });
       let type = $("<td>").text("File");
       let del = $("<td>").append(
         $("<button>")
@@ -153,20 +119,6 @@ async function renderFiles(data) {
           .text("Delete")
       );
       let downloadTd = $("<td>");
-      // downloadBtn.append(
-      //   $("<button>")
-      //     .addClass("downloadButton")
-      //     .attr({
-      //       id: uniqueId,
-      //         directoryClean +
-      //         "/" +
-      //         fileClean +
-      //         "','" +
-      //         uniqueId +
-      //         "');",
-      //     })
-      //     .text("Download")
-      // );
       downloadTd.append(
         $("<button>")
           .addClass("checkFileIsClean")
@@ -184,23 +136,6 @@ async function renderFiles(data) {
           .text("Download")
       );
 
-      // downloadTd.append(
-      //   $("<button>")
-      //     .addClass("sendToScanFile")
-      //     .attr({
-      //       id: sendToScanButtonId + buttonIndex,
-      //       onclick:
-      //         "sendToScanFile('" +
-      //         directoryClean +
-      //         "/" +
-      //         fileClean +
-      //         "','" +
-      //         buttonIndex +
-      //         "');",
-      //     })
-      //     .text("Send To Scan")
-      // );
-
       for await (item of [link, type, del, downloadTd]) {
         tableRow.append(item);
       }
@@ -211,72 +146,17 @@ async function renderFiles(data) {
 
 // Download a file
 function downloadFile(file, uniqueId) {
-  // console.log("uniqueId:", uniqueId);
-  // console.log("file:", file);
-
   let downloadBtn = $("#" + uniqueId);
   downloadBtn.attr("disable", true).text("Loading...");
-
-  // downloadBtn.css({
-  //   "background-color": "red",
-  // });
-
-  // displayError("click download file");
-
   file = file.replace("|", "'");
-  var data = {
-    file: file,
-    scanStep: true,
-    downloadStep: false,
-    checkDownloadStep: false,
-  };
-
-  // socket.emit("downloadfile", data);
-}
-
-// Send To Scan File
-function sendToScanFile(file, uniqueId) {
-  // console.log("uniqueId:", uniqueId);
-  // console.log("file:", file);
-  // let downloadBtn = $("#" + uniqueId);
-  // downloadBtn.attr("disable", true).text("Loading...");
-  // // downloadBtn.css({
-  // //   "background-color": "red",
-  // // });
-  // // displayError("click download file");
-  // file = file.replace("|", "'");
-  // var data = {
-  //   file: file,
-  //   scanStep: true,
-  //   downloadStep: false,
-  //   checkDownloadStep: false,
-  // };
-  // socket.emit("downloadfile", data);
 }
 
 // checkFileIsClean
 function checkFileIsClean(file, buttonIndex) {
-  console.log("run checkFileIsClean in client");
   socket.emit("checkFileIsClean", {
     file,
     buttonIndex,
   });
-  // let downloadBtn = $("#" + uniqueIdCheckBtn);
-  // downloadBtn
-  //   .css({
-  //     display: "flex",
-  //   })
-  //   .text("Scan Checking...");
-
-  // file = file.replace("|", "'");
-  // var data = {
-  //   file: file,
-  //   scanStep: false,
-  //   downloadStep: false,
-  //   checkDownloadStep: true,
-  // };
-
-  // socket.emit("downloadfile", data);
 }
 
 // Send buffer to download blob
@@ -296,8 +176,6 @@ function sendFile(res) {
 
 // Upload files to current directory
 async function upload(input) {
-  var $iframe = $("#daasIframe");
-
   let directory = $("#filebrowser").data("directory");
   if (directory == "/") {
     directoryUp = "";
@@ -305,17 +183,12 @@ async function upload(input) {
     directoryUp = directory;
   }
   if (input.files && input.files[0]) {
-    // $("#filebrowser").empty();
-    // $("#filebrowser").append($("<div>").attr("id", "loading"));
-
     for await (let file of input.files) {
       let reader = new FileReader();
       reader.onload = async function (e) {
         let fileName = file.name;
         if (e.total < 200000000) {
           let data = e.target.result;
-
-          // $("#filebrowser").append($("<div>").text("Uploading " + fileName));
 
           if (file == input.files[input.files.length - 1]) {
             socket.emit("uploadfile", [
@@ -489,10 +362,8 @@ function errorClient(error) {
 
 // Handle status check file is clean
 async function responseCheckFileIsClean(res) {
-  console.log({ res });
   let error = res?.error;
   let buttonIndex = res?.buttonIndex;
-  let process = res?.process;
   let isUploadFile = res?.isUploadFile;
 
   if (error) {
@@ -518,13 +389,6 @@ async function responseCheckFileIsClean(res) {
       button.replaceWith(
         "<span id='NOT_CLEAN'>Is Not Clean.You Can't Download it</span>"
       );
-      // button
-      //   .css({
-      //     "background-color": "red",
-      //   })
-      //   .attr("disable", true)
-      //   .text("not clean")
-      //   .removeAttr("onclick");
       break;
 
     case "CLEAN":
@@ -536,15 +400,6 @@ async function responseCheckFileIsClean(res) {
       break;
 
     case "PROCESSING":
-      // if (process) {
-      //   if (process !== 100) {
-      //     button.replaceWith(
-      //       `<span id='PROCESSING'>uploading, pleas Wait... ${process}% </span>`
-      //     );
-      //     $("#PROCESSING").replaceWith(button);
-      //   }
-      //   return;
-      // }
       button.replaceWith(
         "<span id='PROCESSING'>processing, pleas Wait...</span>"
       );
@@ -552,10 +407,19 @@ async function responseCheckFileIsClean(res) {
         $("#PROCESSING").replaceWith(button);
         if (isUploadFile) {
           // reset input for brows file again
-          $("#uploadInput").val(null);
+          $("#uploadInput").val("");
         }
       }, 6000);
 
+      break;
+
+    case "UPLOAD_SUCCESS":
+      $("#PROCESSING").replaceWith(button);
+      if (isUploadFile) {
+        // reset input for brows file again
+        $("#uploadInput").val("");
+      }
+      alert("Uploaded successfully.");
       break;
 
     default:

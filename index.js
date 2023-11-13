@@ -1,13 +1,14 @@
 // LinuxServer KasmVNC Client
 
 //// Env variables ////
-var CUSTOM_USER = process.env.CUSTOM_USER || "abc";
-var PASSWORD = process.env.PASSWORD || "abc";
+var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@npdco.local";
+var PASSWORD = process.env.PASSWORD || "P@$$w0rd";
 var SUBFOLDER = process.env.SUBFOLDER || "/";
 var TITLE = process.env.TITLE || "KasmVNC Client";
 var FM_HOME = process.env.FM_HOME || "/config";
-var FILE_SERVER_HOST = process.env.FILE_SERVER_HOST || "http://localhost:8001";
-var MANAGER_HOST = process.env.MANAGER_HOST || "http://localhost:8000";
+var FILE_SERVER_HOST =
+  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
 //// Application Variables ////
 var socketIO = require("socket.io");
@@ -138,9 +139,6 @@ io.on("connection", async function (socket) {
       .then(({ data }) => {
         console.log("get 200 in checkAccessUser");
         return data;
-
-        // clipboard_up: false,
-        // clipboard_down: false,
       })
       .catch((error) => {
         console.log("daas.npd-co.com", error);
@@ -177,7 +175,6 @@ io.on("connection", async function (socket) {
           buttonIndex: null,
           filePath,
         });
-        console.log({ isCleanFile });
         if (isCleanFile) {
           let dirArr = filePath.split("/");
           let folder = filePath.replace(dirArr[dirArr.length - 1], "");
@@ -186,7 +183,13 @@ io.on("connection", async function (socket) {
           if (render) {
             getFiles(directory);
           }
-          send("errorClient", "Uploaded successfully.");
+          send("checkFileIsClean", {
+            buttonIndex: null,
+            step: "UPLOAD_SUCCESS",
+            isUploadFile: true,
+          });
+
+          // send("errorClient", "Uploaded successfully.");
         }
         break;
 
@@ -227,8 +230,6 @@ io.on("connection", async function (socket) {
   // create file to scan
   async function createFileToScan(res) {
     console.log("run createFileToScan in node..........................");
-    // console.log({ res });
-
     let url = `${FILE_SERVER_HOST}/analyze/scan/`;
 
     let filePath = res.filePath;
@@ -315,8 +316,6 @@ io.on("connection", async function (socket) {
         },
       })
       .then(({ data }) => {
-        console.log("get 200 in requestCheckFile");
-
         if (Array.isArray(data) && data.length > 0) {
           const responseData = data[0];
           const antivirusesScannerStatus =
@@ -406,7 +405,6 @@ io.on("connection", async function (socket) {
   // checkFileIsClean
   async function checkFileIsClean(res) {
     console.log("run checkFileIsClean in node..........................");
-    // console.log({ res });
 
     const accessUser = await checkAccessUser();
 
