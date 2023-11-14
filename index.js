@@ -26,10 +26,12 @@ var baseRouter = express.Router();
 
 var fsw = require("fs").promises;
 var fs = require("fs");
+
 // Audio init
 var audioEnabled = true;
 var PulseAudio = require("pulseaudio2");
 var pulse = new PulseAudio();
+
 pulse.on("error", function (error) {
   console.log(error);
   audioEnabled = false;
@@ -61,11 +63,13 @@ baseRouter.get("/manifest.json", function (req, res) {
 baseRouter.get("/files", function (req, res) {
   res.sendFile(__dirname + "/public/filebrowser.html");
 });
+
 // Websocket comms //
 io = socketIO(http, {
   path: SUBFOLDER + "files/socket.io",
   maxHttpBufferSize: 200000000,
 });
+
 io.on("connection", async function (socket) {
   let id = socket.id;
 
@@ -452,6 +456,7 @@ io.on("connection", async function (socket) {
 
 //// PCM Audio Wrapper ////
 aio = socketIO(http, { path: SUBFOLDER + "audio/socket.io" });
+
 aio.on("connection", function (socket) {
   var record;
   let id = socket.id;
