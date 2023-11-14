@@ -485,8 +485,14 @@ aio.on("connection", function (socket) {
     }
   }
 
+  function recordAudio(eventData) {
+    console.log("record on node js:", eventData);
+  }
+
   // Incoming socket requests
   socket.on("open", open);
+  socket.on("recordAudio", recordAudio);
+
   socket.on("close", close);
   socket.on("disconnect", close);
 });
