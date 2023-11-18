@@ -1,14 +1,22 @@
 // LinuxServer KasmVNC Client
 
 //// Env variables ////
-var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@npdco.local";
-var PASSWORD = process.env.PASSWORD || "P@$$w0rd";
+var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@test1.local";
+var PASSWORD = process.env.PASSWORD || "qqqqqq1!";
+var IS_ADMIN = process.env.IS_ADMIN || false;
+
 var SUBFOLDER = process.env.SUBFOLDER || "/";
 var TITLE = process.env.TITLE || "KasmVNC Client";
 var FM_HOME = process.env.FM_HOME || "/config";
+
+// var FILE_SERVER_HOST =
+//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+
+// local
 var FILE_SERVER_HOST =
-  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
-var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+  process.env.FILE_SERVER_HOST || "http://192.168.2.20:8001";
+var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.2.21:8000";
 
 //// Application Variables ////
 var socketIO = require("socket.io");
@@ -17,19 +25,26 @@ const axios = require("axios");
 
 const FormData = require("form-data");
 var express = require("express");
-var ejs = require("ejs");
+// var ejs = require("ejs");
 var app = require("express")();
 var http = require("http").Server(app);
 
-var bodyParser = require("body-parser");
+// const fileType = require("file-type");
+// var bodyParser = require("body-parser");
 var baseRouter = express.Router();
 
 var fsw = require("fs").promises;
 var fs = require("fs");
+
 // Audio init
 var audioEnabled = true;
 var PulseAudio = require("pulseaudio2");
 var pulse = new PulseAudio();
+
+// Constants
+let FORBIDDEN_UPLOAD_FILES = [];
+let FORBIDDEN_DOWNLOAD_FILES = [];
+
 pulse.on("error", function (error) {
   console.log(error);
   audioEnabled = false;
@@ -64,7 +79,7 @@ baseRouter.get("/files", function (req, res) {
 // Websocket comms //
 io = socketIO(http, {
   path: SUBFOLDER + "files/socket.io",
-  maxHttpBufferSize: 200000000,
+  maxHttpBufferSize: 500000000,
 });
 io.on("connection", async function (socket) {
   let id = socket.id;
@@ -113,7 +128,7 @@ io.on("connection", async function (socket) {
         {
           email: CUSTOM_USER,
           password: PASSWORD,
-          is_admin: false,
+          is_admin: IS_ADMIN,
         },
         {
           headers: {
@@ -122,6 +137,8 @@ io.on("connection", async function (socket) {
         }
       )
       .then(({ data }) => {
+        FORBIDDEN_UPLOAD_FILES = data.forbidden_upload_files;
+        FORBIDDEN_DOWNLOAD_FILES = data.forbidden_download_files;
         return data;
       })
       .catch((error) => {
@@ -164,8 +181,15 @@ io.on("connection", async function (socket) {
     let filePath = res[1];
     let data = res[2];
     let render = res[3];
-
+    let fileName = filePath.split("/").slice(-1)[0];
     const accessUser = await checkAccessUser();
+
+    const fileExtension = getFileExtensionFromName(fileName);
+    const listUploadEx = accessUser.forbidden_upload_files || [];
+    if (!listUploadEx.includes(`.${fileExtension}`)) {
+      send("errorClient", `you can not upload ${fileExtension} type.`);
+      return;
+    }
 
     switch (accessUser?.can_upload_file) {
       case true:
@@ -194,11 +218,11 @@ io.on("connection", async function (socket) {
         break;
 
       case false:
-        send("errorClient", "Ops! you don't have permission for upload file.");
+        send("errorClient", "you don't have permission for upload file.");
         break;
 
       default:
-        send("errorClient", "Ops! contact support.");
+        send("errorClient", "contact support.");
         break;
     }
   }
@@ -402,11 +426,41 @@ io.on("connection", async function (socket) {
     return result;
   }
 
+  function readFileSync(filePath) {
+    try {
+      const content = fs.readFileSync(filePath, "utf-8");
+      return content;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  function getFileExtensionFromName(fileName) {
+    const lastDotIndex = fileName.lastIndexOf(".");
+    if (lastDotIndex === -1) {
+      return null; // No file extension found
+    }
+
+    const extension = fileName.slice(lastDotIndex + 1).toLowerCase();
+    return extension;
+  }
+
   // checkFileIsClean
   async function checkFileIsClean(res) {
-    console.log("run checkFileIsClean in node..........................");
-
+    console.log("run checkFileIsClean in node..........................", {
+      res,
+    });
+    const filePath = res.file;
+    let fileName = filePath.split("/").slice(-1)[0];
+    const fileExtension = getFileExtensionFromName(fileName);
     const accessUser = await checkAccessUser();
+    const listDownloadEx = accessUser.forbidden_download_files || [];
+    console.log({ listDownloadEx });
+
+    if (!listDownloadEx.includes(`.${fileExtension}`)) {
+      send("errorClient", `you can not download ${fileExtension} type.`);
+      return;
+    }
 
     switch (accessUser?.can_download_file) {
       case true:
@@ -422,14 +476,11 @@ io.on("connection", async function (socket) {
         break;
 
       case false:
-        send(
-          "errorClient",
-          "Ops! you don't have permission for download file."
-        );
+        send("errorClient", "you don't have permission for download file.");
         break;
 
       default:
-        send("errorClient", "Ops! contact support.");
+        send("errorClient", "contact support.");
         break;
     }
   }
