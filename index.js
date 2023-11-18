@@ -1,22 +1,22 @@
 // LinuxServer KasmVNC Client
 
 //// Env variables ////
-var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@test1.local";
-var PASSWORD = process.env.PASSWORD || "qqqqqq1!";
+var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@npdco.local";
+var PASSWORD = process.env.PASSWORD || "P@$$w0rd";
 var IS_ADMIN = process.env.IS_ADMIN || false;
-
 var SUBFOLDER = process.env.SUBFOLDER || "/";
 var TITLE = process.env.TITLE || "KasmVNC Client";
 var FM_HOME = process.env.FM_HOME || "/config";
-
-// var FILE_SERVER_HOST =
-//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
-// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+var FILE_SERVER_HOST =
+  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
 // local
-var FILE_SERVER_HOST =
-  process.env.FILE_SERVER_HOST || "http://192.168.2.20:8001";
-var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.2.21:8000";
+// var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@test1.local";
+// var PASSWORD = process.env.PASSWORD || "qqqqqq1!";
+// var FILE_SERVER_HOST =
+//   process.env.FILE_SERVER_HOST || "http://192.168.2.20:8001";
+// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.2.21:8000";
 
 //// Application Variables ////
 var socketIO = require("socket.io");
