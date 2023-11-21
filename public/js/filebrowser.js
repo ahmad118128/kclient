@@ -132,7 +132,7 @@ async function renderFiles(data) {
               fileClean +
               "','" +
               buttonIndex +
-              "');",
+              "','download');",
           })
           .text("Download")
       );
@@ -166,10 +166,11 @@ function downloadFile(file, uniqueId) {
 }
 
 // checkFileIsClean
-function checkFileIsClean(file, buttonIndex) {
+function checkFileIsClean(file, buttonIndex, transmissionType) {
   socket.emit("checkFileIsClean", {
     file,
     buttonIndex,
+    transmissionType,
   });
 }
 
@@ -191,35 +192,60 @@ function sendFile(res) {
 // Upload files to current directory
 async function upload(input) {
   let directory = $("#filebrowser").data("directory");
+
   if (directory == "/") {
     directoryUp = "";
   } else {
     directoryUp = directory;
   }
+
   if (input.files && input.files[0]) {
     for await (let file of input.files) {
       let reader = new FileReader();
       reader.onload = async function (e) {
         let fileName = file.name;
-        if (e.total < 200000000) {
+        if (e.total < 500000000) {
           let data = e.target.result;
+          console.log({ data });
 
           if (file == input.files[input.files.length - 1]) {
-            socket.emit("uploadfile", [
-              directory,
-              directoryUp + "/" + fileName,
-              data,
-              true,
-            ]);
+            checkFileIsClean(
+              {
+                directory,
+                filePath: directoryUp + "/" + fileName,
+                data,
+                render: true,
+              },
+              null,
+              "upload"
+            );
+            // socket.emit("uploadfile", [
+            //   directory,
+            //   directoryUp + "/" + fileName,
+            //   data,
+            //   true,
+            // ]);
           } else {
-            socket.emit("uploadfile", [
-              directory,
-              directoryUp + "/" + fileName,
-              data,
-              false,
-            ]);
+            checkFileIsClean(
+              {
+                directory,
+                filePath: directoryUp + "/" + fileName,
+                data,
+                render: false,
+              },
+              null,
+              "upload"
+            );
+
+            // socket.emit("uploadfile", [
+            //   directory,
+            //   directoryUp + "/" + fileName,
+            //   data,
+            //   false,
+            // ]);
           }
         } else {
+          alert("File too big " + fileName);
           $("#filebrowser").append($("<div>").text("File too big " + fileName));
           await new Promise((resolve) => setTimeout(resolve, 2000));
           socket.emit("getfiles", directory);
@@ -369,9 +395,18 @@ function allowDrop(ev) {
   ev.preventDefault();
 }
 
+// reset upload input
+function resetUploadInput() {
+  $("#uploadInput").val("");
+}
+
 // Disabled default drag and drop
-function errorClient(error) {
-  alert(error);
+function errorClient({ msg, isUploadFile }) {
+  if (isUploadFile) {
+    resetUploadInput();
+  }
+
+  alert(msg);
 }
 
 // Handle status check file is clean
@@ -431,7 +466,7 @@ async function responseCheckFileIsClean(res) {
       $("#PROCESSING").replaceWith(button);
       if (isUploadFile) {
         // reset input for brows file again
-        $("#uploadInput").val("");
+        resetUploadInput();
       }
       alert("Uploaded successfully.");
       break;

@@ -1,22 +1,24 @@
 // LinuxServer KasmVNC Client
 
 //// Env variables ////
-var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@npdco.local";
-var PASSWORD = process.env.PASSWORD || "P@$$w0rd";
+// production
+// var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@npdco.local";
+// var PASSWORD = process.env.PASSWORD || "P@$$w0rd";
+// var FILE_SERVER_HOST =
+//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+
+// local
+var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@test1.local";
+var PASSWORD = process.env.PASSWORD || "qqqqqq1!";
+var FILE_SERVER_HOST =
+  process.env.FILE_SERVER_HOST || "http://192.168.2.20:8001";
+var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.2.21:8001";
+
 var IS_ADMIN = process.env.IS_ADMIN || false;
 var SUBFOLDER = process.env.SUBFOLDER || "/";
 var TITLE = process.env.TITLE || "KasmVNC Client";
 var FM_HOME = process.env.FM_HOME || "/config";
-var FILE_SERVER_HOST =
-  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
-var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
-
-// local
-// var CUSTOM_USER = process.env.CUSTOM_USER || "Radmehr.h@test1.local";
-// var PASSWORD = process.env.PASSWORD || "qqqqqq1!";
-// var FILE_SERVER_HOST =
-//   process.env.FILE_SERVER_HOST || "http://192.168.2.20:8001";
-// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.2.21:8000";
 
 //// Application Variables ////
 var socketIO = require("socket.io");
@@ -25,12 +27,9 @@ const axios = require("axios");
 
 const FormData = require("form-data");
 var express = require("express");
-// var ejs = require("ejs");
 var app = require("express")();
 var http = require("http").Server(app);
 
-// const fileType = require("file-type");
-// var bodyParser = require("body-parser");
 var baseRouter = express.Router();
 
 var fsw = require("fs").promises;
@@ -40,10 +39,6 @@ var fs = require("fs");
 var audioEnabled = true;
 var PulseAudio = require("pulseaudio2");
 var pulse = new PulseAudio();
-
-// Constants
-let FORBIDDEN_UPLOAD_FILES = [];
-let FORBIDDEN_DOWNLOAD_FILES = [];
 
 pulse.on("error", function (error) {
   console.log(error);
@@ -58,6 +53,10 @@ app.engine("html", require("ejs").renderFile);
 app.engine("json", require("ejs").renderFile);
 baseRouter.use("/public", express.static(__dirname + "/public"));
 baseRouter.use("/vnc", express.static("/usr/share/kasmvnc/www/"));
+
+function bytesToMegabytes(bytes) {
+  return bytes / (1024 * 1024);
+}
 
 baseRouter.get("/", function (req, res) {
   res.render(__dirname + "/public/index.html", { title: TITLE });
@@ -137,16 +136,16 @@ io.on("connection", async function (socket) {
         }
       )
       .then(({ data }) => {
-        FORBIDDEN_UPLOAD_FILES = data.forbidden_upload_files;
-        FORBIDDEN_DOWNLOAD_FILES = data.forbidden_download_files;
         return data;
       })
       .catch((error) => {
-        console.log({ error });
-        send("errorClient", error.message);
+        send("errorClient", {
+          msg: error.message,
+          isUploadFile: true,
+        });
       });
 
-    const token = loginData.access_token;
+    const token = loginData?.access_token;
     return await axios
       .get(`${MANAGER_HOST}/users/profile/`, {
         headers: {
@@ -154,18 +153,23 @@ io.on("connection", async function (socket) {
         },
       })
       .then(({ data }) => {
-        console.log("get 200 in checkAccessUser");
+        console.log({ data });
         return data;
       })
       .catch((error) => {
         console.log("daas.npd-co.com", error);
-        send("errorClient", error.message);
+        send("errorClient", {
+          msg: error.message,
+          isUploadFile: true,
+        });
       });
   }
 
   // Send file to client
-  async function downloadFile(res) {
+  async function downloadFile(res, OK) {
     console.log("run download file");
+    if (OK !== "OK") return; // prevent download form client
+
     const file = res.file;
     let fileName = file.split("/").slice(-1)[0];
     let fileBuffer = await fsw.readFile(file);
@@ -175,56 +179,27 @@ io.on("connection", async function (socket) {
   }
 
   // Write client sent file
-  async function uploadFile(res) {
+  async function uploadFile(res, OK) {
     console.log("run uploadFile......................");
-    let directory = res[0];
-    let filePath = res[1];
-    let data = res[2];
-    let render = res[3];
-    let fileName = filePath.split("/").slice(-1)[0];
-    const accessUser = await checkAccessUser();
+    if (OK !== "OK") return; // prevent upload form client
 
-    const fileExtension = getFileExtensionFromName(fileName);
-    const listUploadEx = accessUser.forbidden_upload_files || [];
-    if (!listUploadEx.includes(`.${fileExtension}`)) {
-      send("errorClient", `you can not upload ${fileExtension} type.`);
-      return;
+    let directory = res.directory;
+    let filePath = res.filePath;
+    let data = res.data;
+    let render = res.render;
+
+    let dirArr = filePath.split("/");
+    let folder = filePath.replace(dirArr[dirArr.length - 1], "");
+    await fsw.mkdir(folder, { recursive: true });
+    await fsw.writeFile(filePath, Buffer.from(data));
+    if (render) {
+      getFiles(directory);
     }
-
-    switch (accessUser?.can_upload_file) {
-      case true:
-        const isCleanFile = await requestCheckFile({
-          file: Buffer.from(data),
-          isUploadFile: true,
-          buttonIndex: null,
-          filePath,
-        });
-        if (isCleanFile) {
-          let dirArr = filePath.split("/");
-          let folder = filePath.replace(dirArr[dirArr.length - 1], "");
-          await fsw.mkdir(folder, { recursive: true });
-          await fsw.writeFile(filePath, Buffer.from(data));
-          if (render) {
-            getFiles(directory);
-          }
-          send("checkFileIsClean", {
-            buttonIndex: null,
-            step: "UPLOAD_SUCCESS",
-            isUploadFile: true,
-          });
-
-          // send("errorClient", "Uploaded successfully.");
-        }
-        break;
-
-      case false:
-        send("errorClient", "you don't have permission for upload file.");
-        break;
-
-      default:
-        send("errorClient", "contact support.");
-        break;
-    }
+    send("checkFileIsClean", {
+      buttonIndex: null,
+      step: "UPLOAD_SUCCESS",
+      isUploadFile: true,
+    });
   }
 
   // Delete files
@@ -253,12 +228,13 @@ io.on("connection", async function (socket) {
 
   // create file to scan
   async function createFileToScan(res) {
-    console.log("run createFileToScan in node..........................");
+    console.log("run createFileToScan in node..........................", res);
     let url = `${FILE_SERVER_HOST}/analyze/scan/`;
 
     let filePath = res.filePath;
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
+    let transmissionType = res?.transmissionType; // "download" || "upload"
 
     let file = res?.file;
     let fileStream = null;
@@ -268,13 +244,16 @@ io.on("connection", async function (socket) {
         fileBuffer = await fsw.readFile(filePath);
       } catch (error) {
         console.log("error on readFile", error);
-        send("errorClient", error.message);
+        send("errorClient", {
+          msg: error.message,
+          isUploadFile,
+        });
         return false;
       }
       fileStream = fs.createReadStream(filePath);
     } else {
-      // Write the Buffer data to the temporary file
-      fs.writeFileSync(filePath, file);
+      file = res?.file.data;
+      createFileTemp(filePath, file);
 
       // Create a ReadStream from the temporary file
       const readStream = fs.createReadStream(filePath);
@@ -284,6 +263,7 @@ io.on("connection", async function (socket) {
 
     const formData = new FormData();
     formData.append("file", fileStream);
+    transmissionType && formData.append("transmission_type", transmissionType);
 
     await axios
       .post(url, formData, {
@@ -315,13 +295,16 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         console.log("error in createFileToScan", error.message);
-        send("errorClient", error.message);
+        send("errorClient", {
+          msg: error.message,
+          isUploadFile,
+        });
       });
   }
 
   // create file to scan
   async function requestCheckFile(res) {
-    console.log("run requestCheckFile in node..........................");
+    console.log("run requestCheckFile in node..........................", res);
     let result = null;
     let filePath = res.filePath;
     let buttonIndex = res?.buttonIndex;
@@ -368,10 +351,11 @@ io.on("connection", async function (socket) {
                 // file is malware
                 const directoryPath = path.dirname(filePath);
                 deleteFiles([filePath, directoryPath]);
-                send(
-                  "errorClient",
-                  "Deleted File, because this file is not clean. "
-                );
+                send("errorClient", {
+                  msg: "Deleted File, because this file is not clean. ",
+                  isUploadFile,
+                });
+
                 return false;
               } else {
                 // file is safe
@@ -382,7 +366,10 @@ io.on("connection", async function (socket) {
               // antivirusesStatusCode is !200
               if (clamavScannerStatus === "FAILED") {
                 // try again
-                send("errorClient", "scan is failed. try again");
+                send("errorClient", {
+                  msg: "scan is failed. try again",
+                  isUploadFile,
+                });
                 return false;
               }
 
@@ -401,10 +388,10 @@ io.on("connection", async function (socket) {
                   // file is malware
                   const directoryPath = path.dirname(filePath);
                   deleteFiles([filePath, directoryPath]);
-                  send(
-                    "errorClient",
-                    "Deleted File, because this file is not clean. "
-                  );
+                  send("errorClient", {
+                    msg: "Deleted File, because this file is not clean. ",
+                    isUploadFile,
+                  });
                   return false;
                 } else {
                   // file is safe
@@ -420,7 +407,7 @@ io.on("connection", async function (socket) {
         }
       })
       .catch((error) => {
-        send("errorClient", error.message);
+        send("errorClient", { msg: error.message, isUploadFile });
       });
 
     return result;
@@ -436,13 +423,147 @@ io.on("connection", async function (socket) {
   }
 
   function getFileExtensionFromName(fileName) {
+    // EX: ".jpg"
     const lastDotIndex = fileName.lastIndexOf(".");
     if (lastDotIndex === -1) {
       return null; // No file extension found
     }
 
     const extension = fileName.slice(lastDotIndex + 1).toLowerCase();
-    return extension;
+    return `.${extension}`;
+  }
+
+  async function getFileSize(filePath, file, transmissionType) {
+    console.log("run getFileSize", { filePath, file, transmissionType });
+    let size = null;
+
+    if (transmissionType === "download") {
+      try {
+        const stats = fs.statSync(filePath);
+        const fileSizeInBytes = stats.size;
+        size = bytesToMegabytes(fileSizeInBytes);
+      } catch (error) {
+        console.error(`Error getting file size: ${error.message}`);
+      }
+    } else if (transmissionType === "upload") {
+      createFileTemp(filePath, file.data);
+      const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
+      size = fileSizeInBytes.toFixed(0);
+    }
+    return size;
+  }
+
+  function createFileTemp(filePath, file) {
+    try {
+      fs.writeFileSync(filePath, file);
+    } catch (error) {
+      console.log("error on createFileTemp", error);
+    }
+  }
+
+  async function getFileSizeInMegaBytes(filePath) {
+    console.log("run getFileSizeInMegaBytes:", filePath);
+    try {
+      const stats = await fsw.stat(filePath);
+      return stats.size / (1024 * 1024);
+    } catch (error) {
+      console.error(
+        `Error getting file size on getFileSizeInMegaBytes: ${error.message}`
+      );
+    }
+    return null;
+  }
+
+  // Check access permission
+  async function checkAccessPermission(res) {
+    console.log("run checkAccessPermission", res);
+
+    const filePath = res.filePath;
+    const transmissionType = res.transmissionType;
+    const fileName = filePath.split("/").slice(-1)[0];
+    const fileExtension = getFileExtensionFromName(fileName);
+    const fileSize = await getFileSize(filePath, res.file, transmissionType);
+
+    const accessUser = await checkAccessUser();
+    const listAccessDownloadEx =
+      accessUser?.allowed_files_type_for_download || [];
+    const listAccessUploadEx = accessUser?.allowed_files_type_for_upload || [];
+    const maxTransmissionUploadSize =
+      accessUser?.max_transmission_upload_size || 0;
+    const maxTransmissionDownloadSize =
+      accessUser?.max_transmission_download_size || 0;
+    const canDownloadFile = accessUser?.can_download_file || false;
+    const canUploadFile = accessUser?.can_upload_file || false;
+
+    const userPermission = {
+      canUploadFile,
+      canDownloadFile,
+      maxTransmissionUploadSize:
+        fileSize && fileSize <= maxTransmissionUploadSize,
+      maxTransmissionDownloadSize:
+        fileSize && fileSize <= maxTransmissionDownloadSize,
+      accessUploadFileExtension: listAccessUploadEx.includes(fileExtension),
+      accessDownloadFileExtension: listAccessDownloadEx.includes(fileExtension),
+    };
+
+    if (transmissionType === "download") {
+      // Download permissions
+
+      if (!userPermission.canDownloadFile) {
+        // check can download
+        send("errorClient", {
+          msg: "you can not download file.",
+          isUploadFile: false,
+        });
+
+        return null;
+      } else if (!userPermission.accessDownloadFileExtension) {
+        // check file extension download
+        send("errorClient", {
+          msg: `you can not download ${fileExtension} type.`,
+          isUploadFile: false,
+        });
+
+        return null;
+      } else if (!userPermission.maxTransmissionDownloadSize) {
+        // check access file size download
+        send("errorClient", {
+          msg: `your file size is ${fileSize}. you can not download more than ${maxTransmissionDownloadSize} mb.`,
+          isUploadFile: false,
+        });
+
+        return null;
+      }
+    } else {
+      // Upload permissions
+      if (!userPermission.canUploadFile) {
+        // check can Upload
+        send("errorClient", {
+          msg: "you can not upload file.",
+          isUploadFile: true,
+        });
+
+        return null;
+      } else if (!userPermission.accessUploadFileExtension) {
+        // check file extension Upload
+        send("errorClient", {
+          msg: `you can not upload ${fileExtension} type.`,
+          isUploadFile: true,
+        });
+
+        return null;
+      } else if (!userPermission.maxTransmissionUploadSize) {
+        // check access file size Upload
+        send("errorClient", {
+          msg: `your file size is ${fileSize}. you can not upload more than ${maxTransmissionUploadSize} mb.`,
+          isUploadFile: true,
+        });
+
+        return null;
+      }
+    }
+
+    return true;
   }
 
   // checkFileIsClean
@@ -450,38 +571,47 @@ io.on("connection", async function (socket) {
     console.log("run checkFileIsClean in node..........................", {
       res,
     });
-    const filePath = res.file;
-    let fileName = filePath.split("/").slice(-1)[0];
-    const fileExtension = getFileExtensionFromName(fileName);
-    const accessUser = await checkAccessUser();
-    const listDownloadEx = accessUser.forbidden_download_files || [];
-    console.log({ listDownloadEx });
+    const transmissionType = res.transmissionType;
 
-    if (!listDownloadEx.includes(`.${fileExtension}`)) {
-      send("errorClient", `you can not download ${fileExtension} type.`);
-      return;
+    let filePath = res.file;
+    if (transmissionType === "upload") {
+      filePath = res.file.filePath;
     }
 
-    switch (accessUser?.can_download_file) {
-      case true:
-        const isCleanFile = await requestCheckFile({
-          file: res.file,
-          filePath: res.file,
-          buttonIndex: res?.buttonIndex,
-          isUploadFile: null,
-        });
-        if (isCleanFile) {
-          downloadFile(res);
+    const hasPermission = await checkAccessPermission({
+      filePath,
+      file: res.file,
+      transmissionType,
+    });
+
+    if (hasPermission) {
+      const isCleanFile = await requestCheckFile({
+        file: res.file,
+        filePath,
+        buttonIndex: res?.buttonIndex,
+        isUploadFile: transmissionType === "upload",
+        transmissionType,
+      });
+
+      if (isCleanFile) {
+        if (transmissionType === "download") {
+          downloadFile(res, "OK");
+        } else if (transmissionType === "upload") {
+          let directory = res.file.directory;
+          let filePath = res.file.filePath;
+          let data = res.file.data;
+          let render = res.file.render;
+          uploadFile(
+            {
+              directory,
+              filePath,
+              data,
+              render,
+            },
+            "OK"
+          );
         }
-        break;
-
-      case false:
-        send("errorClient", "you don't have permission for download file.");
-        break;
-
-      default:
-        send("errorClient", "contact support.");
-        break;
+      }
     }
   }
 
