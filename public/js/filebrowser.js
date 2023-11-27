@@ -2,9 +2,9 @@ var host = window.location.hostname;
 var port = window.location.port;
 var protocol = window.location.protocol;
 var path = window.location.pathname;
-var checkButtonId = "checkButton_";
 var downloadButtonId = "downloadButton_";
 var sendToScanButtonId = "downloadButton_";
+var originalButton = null;
 
 var socket = io(protocol + "//" + host + ":" + port, {
   path: path + "/socket.io",
@@ -124,7 +124,7 @@ async function renderFiles(data) {
         $("<button>")
           .addClass("checkFileIsClean")
           .attr({
-            id: checkButtonId + buttonIndex,
+            id: downloadButtonId + buttonIndex,
             onclick:
               "checkFileIsClean('" +
               directoryClean +
@@ -167,6 +167,20 @@ function downloadFile(file, uniqueId) {
 
 // checkFileIsClean
 function checkFileIsClean(file, buttonIndex, transmissionType) {
+  let button =
+    transmissionType === "download"
+      ? $("#" + downloadButtonId + buttonIndex)
+      : $("#uploadFileButton");
+
+  originalButton = button;
+
+  button
+    .text("Loading...")
+    .css({
+      "background-color": "gray",
+    })
+    .prop("disabled", true);
+
   socket.emit("checkFileIsClean", {
     file,
     buttonIndex,
@@ -401,14 +415,28 @@ function resetUploadInput() {
 }
 
 // Disabled default drag and drop
-function errorClient({ msg, isUploadFile }) {
+function errorClient({ msg, isUploadFile, buttonIndex }) {
   if (isUploadFile) {
     resetUploadInput();
   }
-
+  if (isUploadFile || buttonIndex) {
+    getOriginalBtn(isUploadFile, buttonIndex);
+  }
   alert(msg);
 }
 
+// Get Original Button
+function getOriginalBtn(isUploadFile, buttonIndex) {
+  const textButton = isUploadFile ? "Upload File" : "Download";
+  let button = !isUploadFile
+    ? $("#" + downloadButtonId + buttonIndex)
+    : $("#uploadFileButton");
+  button
+    .text(textButton)
+    .css("background-color", "rgba(9, 2, 2, 0.6)")
+    .prop("disabled", false);
+  return button;
+}
 // Handle status check file is clean
 async function responseCheckFileIsClean(res) {
   let error = res?.error;
@@ -420,9 +448,7 @@ async function responseCheckFileIsClean(res) {
     return;
   }
 
-  let button = !isUploadFile
-    ? $("#" + checkButtonId + buttonIndex)
-    : $("#uploadFileButton");
+  let button = getOriginalBtn(isUploadFile, buttonIndex);
 
   switch (res?.step) {
     case "CREATE_TO_SCAN":
