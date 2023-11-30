@@ -9,17 +9,17 @@
 //   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
 // var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
-// local for inside network
-var CUSTOM_USER = "Radmehr.h@test1.local";
-var PASSWORD = "qqqqqq1!";
-var FILE_SERVER_HOST = "http://192.168.2.20:8001";
-var MANAGER_HOST = "http://192.168.2.21:8001";
+// // local for inside network
+// var CUSTOM_USER = "Radmehr.h@test1.local";
+// var PASSWORD = "qqqqqq1!";
+// var FILE_SERVER_HOST = "http://192.168.2.20:8001";
+// var MANAGER_HOST = "http://192.168.2.21:8001";
 
-// // local Variables for outside network
-// var CUSTOM_USER = "Radmehr.h@npdco.local";
-// var PASSWORD = "P@$$w0rd";
-// var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
-// var MANAGER_HOST = "https://daas.npd-co.com";
+// local Variables for outside network
+var CUSTOM_USER = "Radmehr.h@npdco.local";
+var PASSWORD = "P@$$w0rd";
+var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
+var MANAGER_HOST = "https://daas.npd-co.com";
 
 // console.log({
 //   CUSTOM_USER,
@@ -37,6 +37,7 @@ var FM_HOME = process.env.FM_HOME || "/config";
 var socketIO = require("socket.io");
 const path = require("path");
 const axios = require("axios");
+const crypto = require("crypto");
 
 const FormData = require("form-data");
 var express = require("express");
@@ -199,7 +200,8 @@ io.on("connection", async function (socket) {
       const content = fs.readFileSync(filePath, "utf-8");
       return content;
     } catch (error) {
-      throw error;
+      console.log("error on readFileSync:", error);
+      return null;
     }
   }
 
@@ -241,6 +243,17 @@ io.on("connection", async function (socket) {
       size = fileSizeInBytes.toFixed(0);
     }
     return size;
+  }
+
+  // get File hash
+  async function getFileHash(filePath, file, transmissionType) {
+    const fileBuffer = readFileSync(filePath);
+    if (fileBuffer) {
+      const hashSum = crypto.createHash("sha256");
+      hashSum.update(fileBuffer);
+      return hashSum.digest("hex");
+    }
+    return null;
   }
 
   // get File size as mb
@@ -287,7 +300,7 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
-        const msg = `on ${MANAGER_HOST}/users/login/:: ${dataError}`;
+        const msg = `on ${MANAGER_HOST}/users/login/:: ${error.message}`;
         console.log(msg);
         send("errorClient", {
           msg: dataError,
@@ -306,32 +319,30 @@ io.on("connection", async function (socket) {
         buttonIndex,
       });
       return;
-    }
+    } else {
+      const profile = await axios
+        .get(`${MANAGER_HOST}/users/profile/`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then(({ data }) => {
+          console.log({ data });
+          return data;
+        })
+        .catch((error) => {
+          const dataError = handleErrorCatch(error);
 
-    console.log("run", `${MANAGER_HOST}/users/profile/`);
-    const profile = await axios
-      .get(`${MANAGER_HOST}/users/profile/`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      .then(({ data }) => {
-        console.log({ data });
-        return data;
-      })
-      .catch((error) => {
-        const dataError = handleErrorCatch(error);
-
-        const msg = `on ${MANAGER_HOST}/users/profile/:: ${dataError}`;
-        console.log(msg);
-        send("errorClient", {
-          msg: dataError,
-          isUploadFile: true,
-          buttonIndex: false,
+          const msg = `on ${MANAGER_HOST}/users/profile/:: ${dataError}`;
+          console.log(msg);
+          send("errorClient", {
+            msg: dataError,
+            isUploadFile: true,
+            buttonIndex: false,
+          });
         });
-      });
-    console.log({ profile });
-    return profile;
+      return profile;
+    }
   }
 
   // create file to scan
@@ -462,7 +473,12 @@ io.on("connection", async function (socket) {
     const fileName = filePath.split("/").slice(-1)[0];
     const fileExtension = getFileExtensionFromName(fileName);
     const fileSize = await getFileSize(filePath, res.file, transmissionType);
+    const fileHash = await getFileHash(filePath, res.file, transmissionType);
+
+    console.log({ fileHash });
+
     const accessUser = await checkAccessUser({ isUploadFile, buttonIndex });
+    if (!accessUser) return;
     console.log({ accessUser });
 
     const daasConfigs = accessUser?.daas_configs;
