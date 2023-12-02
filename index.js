@@ -9,17 +9,17 @@
 //   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
 // var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
-// // local for inside network
-// var CUSTOM_USER = "Radmehr.h@test1.local";
-// var PASSWORD = "qqqqqq1!";
-// var FILE_SERVER_HOST = "http://192.168.2.20:8001";
-// var MANAGER_HOST = "http://192.168.2.21:8001";
+// local for inside network
+var CUSTOM_USER = "Radmehr.h@test1.local";
+var PASSWORD = "qqqqqq1!";
+var FILE_SERVER_HOST = "http://192.168.254.196:8002";
+var MANAGER_HOST = "http://192.168.254.198:8001";
 
-// local Variables for outside network
-var CUSTOM_USER = "Radmehr.h@npdco.local";
-var PASSWORD = "P@$$w0rd";
-var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
-var MANAGER_HOST = "https://daas.npd-co.com";
+// // local Variables for outside network
+// var CUSTOM_USER = "Radmehr.h@npdco.local";
+// var PASSWORD = "P@$$w0rd";
+// var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
+// var MANAGER_HOST = "https://daas.npd-co.com";
 
 // console.log({
 //   CUSTOM_USER,
@@ -37,8 +37,6 @@ var FM_HOME = process.env.FM_HOME || "/config";
 var socketIO = require("socket.io");
 const path = require("path");
 const axios = require("axios");
-const crypto = require("crypto");
-
 const FormData = require("form-data");
 var express = require("express");
 var app = require("express")();
@@ -62,15 +60,21 @@ pulse.on("error", function (error) {
   );
 });
 
+// Import My Methods //
+const {
+  getFileHash,
+  getFileExtensionFromName,
+  createFileTemp,
+  getFileSize,
+  handleErrorCatch,
+  getFileHashHex,
+} = require("./functions.js");
+
 //// Server Paths Main ////
 app.engine("html", require("ejs").renderFile);
 app.engine("json", require("ejs").renderFile);
 baseRouter.use("/public", express.static(__dirname + "/public"));
 baseRouter.use("/vnc", express.static("/usr/share/kasmvnc/www/"));
-
-function bytesToMegabytes(bytes) {
-  return bytes / (1024 * 1024);
-}
 
 baseRouter.get("/", function (req, res) {
   res.render(__dirname + "/public/index.html", { title: TITLE });
@@ -96,7 +100,6 @@ io = socketIO(http, {
 });
 io.on("connection", async function (socket) {
   let id = socket.id;
-  console.log("run io.on(connection)");
 
   //// Functions ////
 
@@ -195,86 +198,6 @@ io.on("connection", async function (socket) {
     getFiles(directory);
   }
 
-  function readFileSync(filePath) {
-    try {
-      const content = fs.readFileSync(filePath, "utf-8");
-      return content;
-    } catch (error) {
-      console.log("error on readFileSync:", error);
-      return null;
-    }
-  }
-
-  function getFileExtensionFromName(fileName) {
-    // EX: ".jpg"
-    const lastDotIndex = fileName.lastIndexOf(".");
-    if (lastDotIndex === -1) {
-      return null; // No file extension found
-    }
-
-    const extension = fileName.slice(lastDotIndex + 1).toLowerCase();
-    return `.${extension}`;
-  }
-
-  function createFileTemp(filePath, file) {
-    try {
-      fs.writeFileSync(filePath, file);
-    } catch (error) {
-      console.log("error on createFileTemp", error);
-    }
-  }
-
-  // get File size
-  async function getFileSize(filePath, file, transmissionType) {
-    console.log("run getFileSize", { filePath, file, transmissionType });
-    let size = null;
-
-    if (transmissionType === "download") {
-      try {
-        const stats = fs.statSync(filePath);
-        const fileSizeInBytes = stats.size;
-        size = bytesToMegabytes(fileSizeInBytes);
-      } catch (error) {
-        console.error(`Error getting file size: ${error.message}`);
-      }
-    } else if (transmissionType === "upload") {
-      createFileTemp(filePath, file.data);
-      const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
-      size = fileSizeInBytes.toFixed(0);
-    }
-    return size;
-  }
-
-  // get File hash
-  async function getFileHash(filePath, file, transmissionType) {
-    const fileBuffer = readFileSync(filePath);
-    if (fileBuffer) {
-      const hashSum = crypto.createHash("sha256");
-      hashSum.update(fileBuffer);
-      return hashSum.digest("hex");
-    }
-    return null;
-  }
-
-  // get File size as mb
-  async function getFileSizeInMegaBytes(filePath) {
-    console.log("run getFileSizeInMegaBytes:", filePath);
-    try {
-      const stats = await fsw.stat(filePath);
-      return stats.size / (1024 * 1024);
-    } catch (error) {
-      console.error(
-        `Error getting file size on getFileSizeInMegaBytes: ${error.message}`
-      );
-    }
-    return null;
-  }
-
-  // handle error response
-  function handleErrorCatch(error) {
-    return error?.response?.data?.error ?? "contact support.";
-  }
-
   // check access user
   async function checkAccessUser({ isUploadFile, buttonIndex }) {
     console.log("checkAccessUser", {
@@ -301,7 +224,6 @@ io.on("connection", async function (socket) {
       .catch((error) => {
         const dataError = handleErrorCatch(error);
         const msg = `on ${MANAGER_HOST}/users/login/:: ${error.message}`;
-        console.log(msg);
         send("errorClient", {
           msg: dataError,
           isUploadFile,
@@ -312,7 +234,6 @@ io.on("connection", async function (socket) {
     const token = loginData?.access_token;
     if (!token) {
       const msg = `on /users/login/ token not valid.`;
-      console.log(msg);
       send("errorClient", {
         msg,
         isUploadFile,
@@ -327,14 +248,12 @@ io.on("connection", async function (socket) {
           },
         })
         .then(({ data }) => {
-          console.log({ data });
           return data;
         })
         .catch((error) => {
           const dataError = handleErrorCatch(error);
 
           const msg = `on ${MANAGER_HOST}/users/profile/:: ${dataError}`;
-          console.log(msg);
           send("errorClient", {
             msg: dataError,
             isUploadFile: true,
@@ -350,10 +269,31 @@ io.on("connection", async function (socket) {
     console.log("run requestCheckFile in node..........................", res);
     let result = null;
     let filePath = res.filePath;
+    let file = res.file;
+
+    let fileHash = null;
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
     let fileName = filePath.split("/").slice(-1)[0];
-    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}`;
+
+    const newHash = getFileHashHex(filePath);
+    await getFileHash({ filePath, isUploadFile, file })
+      .then((hash) => {
+        fileHash = hash;
+      })
+      .catch((error) => console.error("Error:", error));
+
+    if (!fileHash) {
+      send("errorClient", {
+        msg: "error on get hash file.",
+        isUploadFile,
+        buttonIndex,
+      });
+      return;
+    }
+
+    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}&file_hash=${fileHash}`;
+
     await axios
       .get(url, {
         auth: {
@@ -365,16 +305,16 @@ io.on("connection", async function (socket) {
         },
       })
       .then(({ data }) => {
-        console.log({ data });
-        if (Array.isArray(data) && data.length > 0) {
-          const responseData = data[0];
-          const antivirusesScannerStatus =
-            responseData?.antiviruses_scanner_status;
-          const antivirusesStatusCode = responseData?.antiviruses_status_code;
-          const antivirusesScanResult = responseData?.antiviruses_scan_result;
+        if (Array.isArray(data.results) && data?.results.length === 0) {
+          // not created for scan
+          createFileToScan(res);
+        } else {
+          const antivirusesScannerStatus = data?.antiviruses_scanner_status;
+          const antivirusesStatusCode = data?.antiviruses_status_code;
+          const antivirusesScanResult = data?.antiviruses_scan_result;
 
-          const clamavScannerStatus = responseData?.clamav_scanner_status;
-          const clamavScanResult = responseData?.clamav_scan_result;
+          const clamavScannerStatus = data?.clamav_scanner_status;
+          const clamavScanResult = data?.clamav_scan_result;
 
           if (antivirusesScannerStatus === "IN_PROCESS") {
             send("checkFileIsClean", {
@@ -446,16 +386,12 @@ io.on("connection", async function (socket) {
               }
             }
           }
-        } else {
-          // not created for scan
-          createFileToScan(res);
         }
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
 
-        const msg = `on /analyze/scan/?file_name=${fileName}:: ${dataError}`;
-        console.log(msg);
+        const msg = `on /analyze/scan/ :: ${dataError}`;
         send("errorClient", { msg: dataError, isUploadFile, buttonIndex });
       });
 
@@ -473,13 +409,9 @@ io.on("connection", async function (socket) {
     const fileName = filePath.split("/").slice(-1)[0];
     const fileExtension = getFileExtensionFromName(fileName);
     const fileSize = await getFileSize(filePath, res.file, transmissionType);
-    const fileHash = await getFileHash(filePath, res.file, transmissionType);
-
-    console.log({ fileHash });
 
     const accessUser = await checkAccessUser({ isUploadFile, buttonIndex });
     if (!accessUser) return;
-    console.log({ accessUser });
 
     const daasConfigs = accessUser?.daas_configs;
 
@@ -639,7 +571,6 @@ io.on("connection", async function (socket) {
         fileBuffer = await fsw.readFile(filePath);
       } catch (error) {
         const msg = `on readFile:: ${error.message}`;
-        console.log(msg);
         send("errorClient", {
           msg,
           isUploadFile,
@@ -694,7 +625,6 @@ io.on("connection", async function (socket) {
         const dataError = handleErrorCatch(error);
 
         const msg = `on createFileToScan /analyze/scan/ :: ${dataError}`;
-        console.log(msg);
         send("errorClient", {
           msg: dataError,
           isUploadFile,
