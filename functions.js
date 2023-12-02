@@ -45,7 +45,6 @@ async function getFileHash({ filePath, isUploadFile, file }) {
   if (isUploadFile) {
     createFileTemp(filePath, file.data);
   }
-  console.log("in getFile hash:", { filePath });
   return new Promise((resolve, reject) => {
     exec(`md5sum "${filePath}"`, (error, stdout, stderr) => {
       if (error) {
@@ -54,6 +53,8 @@ async function getFileHash({ filePath, isUploadFile, file }) {
       }
 
       const hash = stdout.split(" ")[0];
+      console.log("fileHash:", hash);
+
       resolve(hash);
     });
   });
@@ -80,7 +81,6 @@ function createFileTemp(filePath, file) {
 
 // get File size
 async function getFileSize(filePath, file, transmissionType) {
-  console.log("run getFileSize", { filePath, file, transmissionType });
   let size = null;
 
   if (transmissionType === "download") {
@@ -96,12 +96,12 @@ async function getFileSize(filePath, file, transmissionType) {
     const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
     size = fileSizeInBytes.toFixed(0);
   }
+  console.log("FileSize:", size);
   return size;
 }
 
 // get File size as mb
 async function getFileSizeInMegaBytes(filePath) {
-  console.log("run getFileSizeInMegaBytes:", filePath);
   try {
     const stats = await fsw.stat(filePath);
     return stats.size / (1024 * 1024);

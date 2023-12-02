@@ -139,7 +139,7 @@ io.on("connection", async function (socket) {
 
   // Send file to client
   async function downloadFile(res, OK) {
-    console.log("run download file");
+    console.log("run downloadFile.");
     if (OK !== "OK") return; // prevent download form client
 
     const file = res.file;
@@ -152,16 +152,16 @@ io.on("connection", async function (socket) {
 
   // Write client sent file
   async function uploadFile(res, OK) {
-    console.log("run uploadFile......................");
+    console.log("run uploadFile.");
     if (OK !== "OK") return; // prevent upload form client
 
     let directory = res.directory;
     let filePath = res.filePath;
     let data = res.data;
     let render = res.render;
-
     let dirArr = filePath.split("/");
     let folder = filePath.replace(dirArr[dirArr.length - 1], "");
+
     await fsw.mkdir(folder, { recursive: true });
     await fsw.writeFile(filePath, Buffer.from(data));
     if (render) {
@@ -176,7 +176,7 @@ io.on("connection", async function (socket) {
 
   // Delete files
   async function deleteFiles(res) {
-    console.log("run deleteFiles");
+    console.log("run deleteFiles.");
     let item = res[0];
     let directory = res[1];
     item = item.replace("|", "'");
@@ -201,9 +201,7 @@ io.on("connection", async function (socket) {
   // check access user
   async function checkAccessUser({ isUploadFile, buttonIndex }) {
     console.log("checkAccessUser", {
-      MANAGER_HOST,
       CUSTOM_USER,
-      PASSWORD,
     });
     const loginData = await axios
       .post(
@@ -266,7 +264,7 @@ io.on("connection", async function (socket) {
 
   // create file to scan
   async function requestCheckFile(res) {
-    console.log("run requestCheckFile in node..........................", res);
+    console.log("run requestCheckFile.");
     let result = null;
     let filePath = res.filePath;
     let file = res.file;
@@ -400,7 +398,7 @@ io.on("connection", async function (socket) {
 
   // Check access permission
   async function checkAccessPermission(res) {
-    console.log("run checkAccessPermission", res);
+    console.log("run checkAccessPermission.");
 
     const filePath = res.filePath;
     const transmissionType = res.transmissionType;
@@ -409,7 +407,6 @@ io.on("connection", async function (socket) {
     const fileName = filePath.split("/").slice(-1)[0];
     const fileExtension = getFileExtensionFromName(fileName);
     const fileSize = await getFileSize(filePath, res.file, transmissionType);
-
     const accessUser = await checkAccessUser({ isUploadFile, buttonIndex });
     if (!accessUser) return;
 
@@ -504,9 +501,7 @@ io.on("connection", async function (socket) {
 
   // checkFileIsClean
   async function checkFileIsClean(res) {
-    console.log("run checkFileIsClean in node..........................", {
-      res,
-    });
+    console.log("run checkFileIsClean.");
     const transmissionType = res.transmissionType;
     const buttonIndex = res.buttonIndex;
 
@@ -555,7 +550,7 @@ io.on("connection", async function (socket) {
 
   // create file to scan
   async function createFileToScan(res) {
-    console.log("run createFileToScan in node..........................", res);
+    console.log("run createFileToScan.");
     let url = `${FILE_SERVER_HOST}/analyze/scan/`;
 
     let filePath = res.filePath;
