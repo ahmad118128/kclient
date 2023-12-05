@@ -21,13 +21,6 @@ var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 // var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
 // var MANAGER_HOST = "https://daas.npd-co.com";
 
-// console.log({
-//   CUSTOM_USER,
-//   PASSWORD,
-//   FILE_SERVER_HOST,
-//   MANAGER_HOST,
-// });
-
 var IS_ADMIN = process.env.IS_ADMIN || false;
 var SUBFOLDER = process.env.SUBFOLDER || "/";
 var TITLE = process.env.TITLE || "KasmVNC Client";
@@ -481,35 +474,6 @@ io.on("connection", async function (socket) {
       } else {
         hasPermission = true;
       }
-
-      // if (!userPermission.canDownloadFile) {
-      //   // check can download
-      //   send("errorClient", {
-      //     msg: "you can not download file.",
-      //     isUploadFile: false,
-      //     buttonIndex,
-      //   })
-
-      //   return null
-      // } else if (!userPermission.accessDownloadFileExtension) {
-      //   // check file extension download
-      //   send("errorClient", {
-      //     msg: `you can not download ${fileExtension} type.`,
-      //     isUploadFile: false,
-      //     buttonIndex,
-      //   })
-
-      //   return null
-      // } else if (!userPermission.maxTransmissionDownloadSize) {
-      //   // check access file size download
-      //   send("errorClient", {
-      //     msg: `your file size is ${fileSize}. you can not download more than ${maxTransmissionDownloadSize} mb.`,
-      //     isUploadFile: false,
-      //     buttonIndex,
-      //   })
-
-      //   return null
-      // }
     } else if (transmissionType === "upload") {
       // Upload permissions
       // check can user upload
