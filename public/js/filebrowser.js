@@ -453,7 +453,7 @@ async function responseCheckFileIsClean(res) {
   switch (res?.step) {
     case "CREATE_TO_SCAN":
       button.replaceWith(
-        "<span id='CREATE_TO_SCAN'>Create File To Scan.Pleas Wait...</span>"
+        "<span id='CREATE_TO_SCAN'>Create File To Scan,Please Wait.</span>"
       );
       setTimeout(function () {
         $("#CREATE_TO_SCAN").replaceWith(button);
@@ -476,7 +476,7 @@ async function responseCheckFileIsClean(res) {
 
     case "PROCESSING":
       button.replaceWith(
-        "<span id='PROCESSING'>processing, pleas Wait...</span>"
+        "<span id='PROCESSING'>Processing, Please Wait.</span>"
       );
       setTimeout(function () {
         $("#PROCESSING").replaceWith(button);
