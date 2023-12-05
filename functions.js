@@ -58,7 +58,9 @@ async function getFileHash({ filePath, isUploadFile, file }) {
 
       const hash = stdout.split(" ")[0];
       console.log("fileHash:", hash);
-      removeFileTemporary(filePath);
+      if (isUploadFile) {
+        removeFileTemporary(filePath);
+      }
       resolve(hash);
     });
   });
