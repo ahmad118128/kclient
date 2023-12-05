@@ -41,6 +41,10 @@ async function getFileHashHex(filePath) {
   return null;
 }
 
+function removeFileTemporary(filePath) {
+  fs.unlinkSync(filePath);
+}
+
 async function getFileHash({ filePath, isUploadFile, file }) {
   if (isUploadFile) {
     createFileTemp(filePath, file.data);
@@ -54,7 +58,7 @@ async function getFileHash({ filePath, isUploadFile, file }) {
 
       const hash = stdout.split(" ")[0];
       console.log("fileHash:", hash);
-
+      removeFileTemporary(filePath);
       resolve(hash);
     });
   });
@@ -95,6 +99,7 @@ async function getFileSize(filePath, file, transmissionType) {
     createFileTemp(filePath, file.data);
     const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
     size = fileSizeInBytes.toFixed(0);
+    removeFileTemporary(filePath);
   }
   console.log("FileSize:", size);
   return size;
@@ -125,4 +130,5 @@ module.exports = {
   getFileSize,
   handleErrorCatch,
   getFileHashHex,
+  removeFileTemporary,
 };

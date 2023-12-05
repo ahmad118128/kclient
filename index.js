@@ -12,8 +12,8 @@ var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 // local for inside network
 // var CUSTOM_USER = "Radmehr.h@test1.local";
 // var PASSWORD = "qqqqqq1!";
-// var FILE_SERVER_HOST = "http://192.168.254.196:8002";
-// var MANAGER_HOST = "http://192.168.254.198:8001";
+// var FILE_SERVER_HOST = "http://192.168.254.196:8001";
+// var MANAGER_HOST = "http://192.168.254.198:8000";
 
 // local Variables for outside network
 // var CUSTOM_USER = "Radmehr.h@npdco.local";
@@ -67,7 +67,7 @@ const {
   createFileTemp,
   getFileSize,
   handleErrorCatch,
-  getFileHashHex,
+  removeFileTemporary,
 } = require("./functions.js");
 
 //// Server Paths Main ////
@@ -681,7 +681,6 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
-
         const msg = `on createFileToScan /analyze/scan/ :: ${dataError}`;
         send("errorClient", {
           msg: dataError,
@@ -689,6 +688,9 @@ io.on("connection", async function (socket) {
           buttonIndex,
         });
       });
+    if (isUploadFile) {
+      removeFileTemporary(filePath);
+    }
   }
 
   // errorClient
