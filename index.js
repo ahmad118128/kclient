@@ -2,12 +2,12 @@
 
 //// Env variables ////
 
-// // production
-// var CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc"
-// var PASSWORD = process.env.PASSWORD || "abc"
-// var FILE_SERVER_HOST =
-//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001"
-// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000"
+// production
+var CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
+var PASSWORD = process.env.PASSWORD || "abc";
+var FILE_SERVER_HOST =
+  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
 // local for inside network
 // var CUSTOM_USER = "Radmehr.h@test1.local";
@@ -16,10 +16,10 @@
 // var MANAGER_HOST = "http://192.168.254.198:8001";
 
 // local Variables for outside network
-var CUSTOM_USER = "Radmehr.h@npdco.local";
-var PASSWORD = "P@$$w0rd";
-var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
-var MANAGER_HOST = "https://daas.npd-co.com";
+// var CUSTOM_USER = "Radmehr.h@npdco.local";
+// var PASSWORD = "P@$$w0rd";
+// var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
+// var MANAGER_HOST = "https://daas.npd-co.com";
 
 // console.log({
 //   CUSTOM_USER,
