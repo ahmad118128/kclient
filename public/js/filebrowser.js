@@ -233,12 +233,6 @@ async function upload(input) {
               null,
               "upload"
             );
-            // socket.emit("uploadfile", [
-            //   directory,
-            //   directoryUp + "/" + fileName,
-            //   data,
-            //   true,
-            // ]);
           } else {
             checkFileIsClean(
               {
@@ -250,13 +244,6 @@ async function upload(input) {
               null,
               "upload"
             );
-
-            // socket.emit("uploadfile", [
-            //   directory,
-            //   directoryUp + "/" + fileName,
-            //   data,
-            //   false,
-            // ]);
           }
         } else {
           alert("File too big " + fileName);
@@ -319,21 +306,21 @@ async function dropFiles(ev) {
         if (e.total < 200000000) {
           let data = e.target.result;
           $("#filebrowser").append($("<div>").text("Uploading " + fileName));
-          if (item == items[items.length - 1]) {
-            socket.emit("uploadfile", [
-              directory,
-              directoryUp + "/" + fullPath,
-              data,
-              true,
-            ]);
-          } else {
-            socket.emit("uploadfile", [
-              directory,
-              directoryUp + "/" + fullPath,
-              data,
-              false,
-            ]);
-          }
+          // if (item == items[items.length - 1]) {
+          //   socket.emit("uploadfile", [
+          //     directory,
+          //     directoryUp + "/" + fullPath,
+          //     data,
+          //     true,
+          //   ]);
+          // } else {
+          //   socket.emit("uploadfile", [
+          //     directory,
+          //     directoryUp + "/" + fullPath,
+          //     data,
+          //     false,
+          //   ]);
+          // }
         } else {
           $("#filebrowser").append($("<div>").text("File too big " + fileName));
           await new Promise((resolve) => setTimeout(resolve, 2000));

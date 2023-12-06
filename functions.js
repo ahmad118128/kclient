@@ -3,6 +3,9 @@ var fs = require("fs");
 var fsw = fs.promises;
 const { exec } = require("child_process");
 
+let currentTempFilePath = null;
+let currentHashFile = null;
+
 // handle error response
 function handleErrorCatch(error) {
   const errorData = error?.response?.data?.error;
@@ -13,6 +16,18 @@ function handleErrorCatch(error) {
     errorData ??
     `contact support. code: ${errorStatus} message:${errorMessage} `
   );
+}
+
+// 3- get extension from file name
+function getFileExtensionFromName(fileName) {
+  // EX: ".jpg"
+  const lastDotIndex = fileName.lastIndexOf(".");
+  if (lastDotIndex === -1) {
+    return null; // No file extension found
+  }
+
+  const extension = fileName.slice(lastDotIndex + 1).toLowerCase();
+  return `.${extension}`;
 }
 
 function readFileSync(filePath) {
@@ -43,49 +58,46 @@ async function getFileHashHex(filePath) {
 
 function removeFileTemporary(filePath) {
   fs.unlinkSync(filePath);
+  currentTempFilePath = null;
 }
 
 async function getFileHash({ filePath, isUploadFile, file }) {
   if (isUploadFile) {
     createFileTemp(filePath, file.data);
   }
+
   return new Promise((resolve, reject) => {
     exec(`md5sum "${filePath}"`, (error, stdout, stderr) => {
       if (error) {
+        currentHashFile = null;
         reject(error);
         return;
       }
 
       const hash = stdout.split(" ")[0];
       console.log("fileHash:", hash);
-      if (isUploadFile) {
-        removeFileTemporary(filePath);
-      }
+      // if (isUploadFile) {
+      //   removeFileTemporary(filePath);
+      // }
+      currentHashFile = hash;
       resolve(hash);
     });
   });
 }
 
-function getFileExtensionFromName(fileName) {
-  // EX: ".jpg"
-  const lastDotIndex = fileName.lastIndexOf(".");
-  if (lastDotIndex === -1) {
-    return null; // No file extension found
-  }
-
-  const extension = fileName.slice(lastDotIndex + 1).toLowerCase();
-  return `.${extension}`;
-}
-
+// create file temporary for upload file
 function createFileTemp(filePath, file) {
-  try {
-    fs.writeFileSync(filePath, file);
-  } catch (error) {
-    console.log("error on createFileTemp", error);
+  if (currentTempFilePath !== filePath) {
+    try {
+      fs.writeFileSync(filePath, file);
+      currentTempFilePath = filePath;
+    } catch (error) {
+      console.log("error on createFileTemp", error);
+    }
   }
 }
 
-// get File size
+// 4 - get File size
 async function getFileSize(filePath, file, transmissionType) {
   let size = null;
 
@@ -101,7 +113,7 @@ async function getFileSize(filePath, file, transmissionType) {
     createFileTemp(filePath, file.data);
     const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
     size = fileSizeInBytes.toFixed(0);
-    removeFileTemporary(filePath);
+    // removeFileTemporary(filePath);
   }
   console.log("FileSize:", size);
   return size;
@@ -124,6 +136,14 @@ function bytesToMegabytes(bytes) {
   return bytes / (1024 * 1024);
 }
 
+function getCurrentTempFile() {
+  return currentTempFilePath;
+}
+
+function getCurrentHashFile() {
+  return currentHashFile;
+}
+
 module.exports = {
   getFileHash,
   readFileSync,
@@ -133,4 +153,6 @@ module.exports = {
   handleErrorCatch,
   getFileHashHex,
   removeFileTemporary,
+  getCurrentTempFile,
+  getCurrentHashFile,
 };

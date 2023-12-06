@@ -3,11 +3,11 @@
 //// Env variables ////
 
 // production
-var CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
-var PASSWORD = process.env.PASSWORD || "abc";
-var FILE_SERVER_HOST =
-  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
-var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+// var CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
+// var PASSWORD = process.env.PASSWORD || "abc";
+// var FILE_SERVER_HOST =
+//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
 // local for inside network
 // var CUSTOM_USER = "Radmehr.h@test1.local";
@@ -16,10 +16,10 @@ var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 // var MANAGER_HOST = "http://192.168.254.198:8000";
 
 // local Variables for outside network
-// var CUSTOM_USER = "Radmehr.h@npdco.local";
-// var PASSWORD = "P@$$w0rd";
-// var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
-// var MANAGER_HOST = "https://daas.npd-co.com";
+var CUSTOM_USER = "Radmehr.h@npdco.local";
+var PASSWORD = "P@$$w0rd";
+var FILE_SERVER_HOST = "https://sandbox.npd-co.com";
+var MANAGER_HOST = "https://daas.npd-co.com";
 
 var IS_ADMIN = process.env.IS_ADMIN || false;
 var SUBFOLDER = process.env.SUBFOLDER || "/";
@@ -61,7 +61,12 @@ const {
   getFileSize,
   handleErrorCatch,
   removeFileTemporary,
+  getCurrentTempFile,
+  getCurrentHashFile,
 } = require("./functions.js");
+
+let currentTempFile = getCurrentTempFile();
+let currentHashFile = getCurrentHashFile();
 
 //// Server Paths Main ////
 app.engine("html", require("ejs").renderFile);
@@ -101,294 +106,58 @@ io.on("connection", async function (socket) {
     getFiles(FM_HOME);
   }
 
-  // Emit to user
-  function send(command, data) {
-    io.sockets.to(id).emit(command, data);
-  }
+  // 1- checkFileIsClean
+  async function checkFileIsClean(res) {
+    console.log("run checkFileIsClean.");
+    const transmissionType = res.transmissionType;
+    const buttonIndex = res.buttonIndex;
 
-  // Get file list for directory
-  async function getFiles(directory) {
-    try {
-      let items = await fsw.readdir(directory);
-      if (items.length > 0) {
-        let dirs = [];
-        let files = [];
-        for await (let item of items) {
-          let fullPath = directory + "/" + item;
-          if (fs.lstatSync(fullPath).isDirectory()) {
-            dirs.push(item);
-          } else {
-            files.push(item);
-          }
-        }
-        send("renderfiles", [dirs, files, directory]);
-      } else {
-        send("renderfiles", [[], [], directory]);
-      }
-    } catch (error) {
-      send("renderfiles", [[], [], directory]);
+    let filePath = res.file;
+    if (transmissionType === "upload") {
+      filePath = res.file.filePath;
     }
-  }
 
-  // Send file to client
-  async function downloadFile(res, OK) {
-    console.log("run downloadFile.");
-    if (OK !== "OK") return; // prevent download form client
-
-    const file = res.file;
-    let fileName = file.split("/").slice(-1)[0];
-    let fileBuffer = await fsw.readFile(file);
-    send("sendfile", [fileBuffer, fileName]);
-    const directoryPath = path.dirname(file);
-    deleteFiles([file, directoryPath]);
-  }
-
-  // Write client sent file
-  async function uploadFile(res, OK) {
-    console.log("run uploadFile.");
-    if (OK !== "OK") return; // prevent upload form client
-
-    let directory = res.directory;
-    let filePath = res.filePath;
-    let data = res.data;
-    let render = res.render;
-    let dirArr = filePath.split("/");
-    let folder = filePath.replace(dirArr[dirArr.length - 1], "");
-
-    await fsw.mkdir(folder, { recursive: true });
-    await fsw.writeFile(filePath, Buffer.from(data));
-    if (render) {
-      getFiles(directory);
-    }
-    send("checkFileIsClean", {
-      buttonIndex: false,
-      step: "UPLOAD_SUCCESS",
-      isUploadFile: true,
+    const hasPermission = await checkAccessPermission({
+      filePath,
+      file: res.file,
+      transmissionType,
+      buttonIndex,
     });
-  }
 
-  // Delete files
-  async function deleteFiles(res) {
-    console.log("run deleteFiles.");
-    let item = res[0];
-    let directory = res[1];
-    item = item.replace("|", "'");
-    if (fs.lstatSync(item).isDirectory()) {
-      await fsw.rm(item, { recursive: true });
-    } else {
-      await fsw.unlink(item);
-    }
-    getFiles(directory);
-  }
-
-  // Create a folder
-  async function createFolder(res) {
-    let dir = res[0];
-    let directory = res[1];
-    if (!fs.existsSync(dir)) {
-      await fsw.mkdir(dir);
-    }
-    getFiles(directory);
-  }
-
-  // check access user
-  async function checkAccessUser({ isUploadFile, buttonIndex }) {
-    console.log("checkAccessUser", {
-      CUSTOM_USER,
-    });
-    const loginData = await axios
-      .post(
-        `${MANAGER_HOST}/users/login/`,
-        {
-          email: CUSTOM_USER,
-          password: PASSWORD,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      )
-      .then(({ data }) => {
-        return data;
-      })
-      .catch((error) => {
-        const dataError = handleErrorCatch(error);
-        const msg = `on ${MANAGER_HOST}/users/login/:: ${error.message}`;
-        send("errorClient", {
-          msg: dataError,
-          isUploadFile,
-          buttonIndex,
-        });
-      });
-
-    const token = loginData?.access_token;
-    if (!token) {
-      const msg = `on /users/login/ token not valid.`;
-      send("errorClient", {
-        msg,
-        isUploadFile,
+    if (hasPermission) {
+      const resultRequestCheckFile = await requestCheckFile({
+        file: res.file,
+        filePath,
         buttonIndex,
+        isUploadFile: transmissionType === "upload",
+        transmissionType,
       });
-      return;
-    } else {
-      const profile = await axios
-        .get(`${MANAGER_HOST}/users/profile/`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-        .then(({ data }) => {
-          return data;
-        })
-        .catch((error) => {
-          const dataError = handleErrorCatch(error);
 
-          const msg = `on ${MANAGER_HOST}/users/profile/:: ${dataError}`;
-          send("errorClient", {
-            msg: dataError,
-            isUploadFile: true,
-            buttonIndex: false,
-          });
-        });
-      return profile;
+      console.log({ resultRequestCheckFile });
+
+      // if (isCleanFile) {
+      //   if (transmissionType === "download") {
+      //     downloadFile(res, "OK");
+      //   } else if (transmissionType === "upload") {
+      //     let directory = res.file.directory;
+      //     let filePath = res.file.filePath;
+      //     let data = res.file.data;
+      //     let render = res.file.render;
+      //     uploadFile(
+      //       {
+      //         directory,
+      //         filePath,
+      //         data,
+      //         render,
+      //       },
+      //       "OK"
+      //     );
+      //   }
+      // }
     }
   }
 
-  // create file to scan
-  async function requestCheckFile(res) {
-    console.log("run requestCheckFile.");
-    let result = null;
-    let filePath = res.filePath;
-    let file = res.file;
-
-    let fileHash = null;
-    let buttonIndex = res?.buttonIndex;
-    let isUploadFile = res?.isUploadFile;
-    let fileName = filePath.split("/").slice(-1)[0];
-
-    await getFileHash({ filePath, isUploadFile, file })
-      .then((hash) => {
-        fileHash = hash;
-      })
-      .catch((error) => console.error("Error:", error));
-
-    if (!fileHash) {
-      send("errorClient", {
-        msg: "error on get hash file.",
-        isUploadFile,
-        buttonIndex,
-      });
-      return;
-    }
-
-    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}&file_hash=${fileHash}`;
-
-    await axios
-      .get(url, {
-        auth: {
-          username: CUSTOM_USER,
-          password: PASSWORD,
-        },
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-      .then(({ data }) => {
-        if (Array.isArray(data.results) && data?.results.length === 0) {
-          // not created for scan
-          createFileToScan(res);
-        } else {
-          const antivirusesScannerStatus = data?.antiviruses_scanner_status;
-          const antivirusesStatusCode = data?.antiviruses_status_code;
-          const antivirusesScanResult = data?.antiviruses_scan_result;
-
-          const clamavScannerStatus = data?.clamav_scanner_status;
-          const clamavScanResult = data?.clamav_scan_result;
-
-          if (antivirusesScannerStatus === "IN_PROCESS") {
-            send("checkFileIsClean", {
-              buttonIndex,
-              step: "PROCESSING",
-              isUploadFile,
-            });
-            return false;
-          }
-
-          if (
-            antivirusesScannerStatus === "FINISHED" ||
-            antivirusesScannerStatus === "FAILED"
-          ) {
-            if (antivirusesStatusCode === 200) {
-              if (antivirusesScanResult) {
-                // file is malware
-                const directoryPath = path.dirname(filePath);
-                deleteFiles([filePath, directoryPath]);
-                send("errorClient", {
-                  msg: "Deleted File, because this file is not clean. ",
-                  isUploadFile,
-                });
-
-                return false;
-              } else {
-                // file is safe
-                // downloadFile(res);
-                result = true;
-              }
-            } else {
-              // antivirusesStatusCode is !200
-              if (clamavScannerStatus === "FAILED") {
-                // try again
-                send("errorClient", {
-                  msg: "scan is failed. try again",
-                  isUploadFile,
-                  buttonIndex,
-                });
-                return false;
-              }
-
-              if (clamavScannerStatus === "IN_PROCESS") {
-                // processing
-                send("checkFileIsClean", {
-                  isUploadFile,
-                  buttonIndex,
-                  step: "PROCESSING",
-                });
-                return false;
-              }
-
-              if (clamavScannerStatus === "FINISHED") {
-                if (clamavScanResult) {
-                  // file is malware
-                  const directoryPath = path.dirname(filePath);
-                  deleteFiles([filePath, directoryPath]);
-                  send("errorClient", {
-                    msg: "Deleted File, because this file is not clean. ",
-                    isUploadFile,
-                    buttonIndex,
-                  });
-                  return false;
-                } else {
-                  // file is safe
-                  // downloadFile(res);
-                  result = true;
-                }
-              }
-            }
-          }
-        }
-      })
-      .catch((error) => {
-        const dataError = handleErrorCatch(error);
-
-        const msg = `on /analyze/scan/ :: ${dataError}`;
-        send("errorClient", { msg: dataError, isUploadFile, buttonIndex });
-      });
-
-    return result;
-  }
-
-  // Check access permission
+  // 2- Check access permission
   async function checkAccessPermission(res) {
     console.log("run checkAccessPermission.");
     let hasPermission = null;
@@ -425,7 +194,7 @@ io.on("connection", async function (socket) {
       accessDownloadFileExtension: listAccessDownloadEx.includes(fileExtension),
     };
 
-    console.log({ userPermission });
+    // console.log({ userPermission, listAccessDownloadEx, listAccessUploadEx });
 
     if (transmissionType === "download") {
       // Download permissions
@@ -525,57 +294,215 @@ io.on("connection", async function (socket) {
     return hasPermission;
   }
 
-  // checkFileIsClean
-  async function checkFileIsClean(res) {
-    console.log("run checkFileIsClean.");
-    const transmissionType = res.transmissionType;
-    const buttonIndex = res.buttonIndex;
-
-    let filePath = res.file;
-    if (transmissionType === "upload") {
-      filePath = res.file.filePath;
-    }
-
-    const hasPermission = await checkAccessPermission({
-      filePath,
-      file: res.file,
-      transmissionType,
-      buttonIndex,
+  // 4- check access user
+  async function checkAccessUser({ isUploadFile, buttonIndex }) {
+    console.log("checkAccessUser", {
+      CUSTOM_USER,
     });
-
-    if (hasPermission) {
-      const isCleanFile = await requestCheckFile({
-        file: res.file,
-        filePath,
-        buttonIndex,
-        isUploadFile: transmissionType === "upload",
-        transmissionType,
+    const loginData = await axios
+      .post(
+        `${MANAGER_HOST}/users/login/`,
+        {
+          email: CUSTOM_USER,
+          password: PASSWORD,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      .then(({ data }) => {
+        return data;
+      })
+      .catch((error) => {
+        const dataError = handleErrorCatch(error);
+        const msg = `on ${MANAGER_HOST}/users/login/:: ${error.message}`;
+        send("errorClient", {
+          msg: dataError,
+          isUploadFile,
+          buttonIndex,
+        });
       });
 
-      if (isCleanFile) {
-        if (transmissionType === "download") {
-          downloadFile(res, "OK");
-        } else if (transmissionType === "upload") {
-          let directory = res.file.directory;
-          let filePath = res.file.filePath;
-          let data = res.file.data;
-          let render = res.file.render;
-          uploadFile(
-            {
-              directory,
-              filePath,
-              data,
-              render,
-            },
-            "OK"
-          );
-        }
-      }
+    const token = loginData?.access_token;
+    if (!token) {
+      const msg = `on /users/login/ token not valid.`;
+      send("errorClient", {
+        msg,
+        isUploadFile,
+        buttonIndex,
+      });
+      return;
     } else {
+      const profile = await axios
+        .get(`${MANAGER_HOST}/users/profile/`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        .then(({ data }) => {
+          return data;
+        })
+        .catch((error) => {
+          const dataError = handleErrorCatch(error);
+
+          const msg = `on ${MANAGER_HOST}/users/profile/:: ${dataError}`;
+          send("errorClient", {
+            msg: dataError,
+            isUploadFile: true,
+            buttonIndex: false,
+          });
+        });
+      return profile;
     }
   }
 
-  // create file to scan
+  // 5- create file to scan
+  async function requestCheckFile(res) {
+    console.log("run requestCheckFile.");
+    let result = null;
+    let filePath = res.filePath;
+    let file = res.file;
+
+    let fileHash = null;
+    let buttonIndex = res?.buttonIndex;
+    let isUploadFile = res?.isUploadFile;
+    let fileName = filePath.split("/").slice(-1)[0];
+
+    if (!currentHashFile) {
+      await getFileHash({ filePath, isUploadFile, file })
+        .then((hash) => {
+          fileHash = hash;
+        })
+        .catch((error) => console.error("Error:", error));
+    } else {
+      fileHash = currentHashFile;
+    }
+
+    if (!fileHash) {
+      send("errorClient", {
+        msg: "error on get hash file.",
+        isUploadFile,
+        buttonIndex,
+      });
+      return;
+    }
+
+    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}&file_hash=${fileHash}`;
+
+    await axios
+      .get(url, {
+        auth: {
+          username: CUSTOM_USER,
+          password: PASSWORD,
+        },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+      .then(({ data }) => {
+        if (Array.isArray(data.results) && data?.results.length === 0) {
+          // not created for scan
+          createFileToScan(res);
+
+          result = "SEND_TO_SCAN";
+        } else {
+          const antivirusesScannerStatus = data?.antiviruses_scanner_status;
+          const antivirusesStatusCode = data?.antiviruses_status_code;
+          const antivirusesScanResult = data?.antiviruses_scan_result;
+
+          const clamavScannerStatus = data?.clamav_scanner_status;
+          const clamavScanResult = data?.clamav_scan_result;
+
+          if (antivirusesScannerStatus === "IN_PROCESS") {
+            // send("checkFileIsClean", {
+            //   buttonIndex,
+            //   step: "PROCESSING",
+            //   isUploadFile,
+            // });
+            // return false;
+            result = "IN_PROCESS";
+          }
+
+          if (
+            antivirusesScannerStatus === "FINISHED" ||
+            antivirusesScannerStatus === "FAILED"
+          ) {
+            if (antivirusesStatusCode === 200) {
+              if (antivirusesScanResult) {
+                // file is malware
+                // const directoryPath = path.dirname(filePath);
+                // deleteFiles([filePath, directoryPath]);
+                // send("errorClient", {
+                //   msg: "Deleted File, because this file is not clean. ",
+                //   isUploadFile,
+                // });
+                result = "NOT_CLEAN";
+                // return false;
+              } else {
+                // file is safe
+                result = "CLEAN";
+                // result = true;
+              }
+            } else {
+              // antivirusesStatusCode is !200
+              if (clamavScannerStatus === "FAILED") {
+                // try again
+                // send("errorClient", {
+                //   msg: "scan is failed. try again",
+                //   isUploadFile,
+                //   buttonIndex,
+                // });
+                // return false;
+                result = "FAILED";
+              }
+
+              if (clamavScannerStatus === "IN_PROCESS") {
+                // processing
+                // send("checkFileIsClean", {
+                //   isUploadFile,
+                //   buttonIndex,
+                //   step: "PROCESSING",
+                // });
+                // return false;
+                result = "IN_PROCESS";
+              }
+
+              if (clamavScannerStatus === "FINISHED") {
+                if (clamavScanResult) {
+                  // file is malware
+                  // const directoryPath = path.dirname(filePath);
+                  // deleteFiles([filePath, directoryPath]);
+                  // send("errorClient", {
+                  //   msg: "Deleted File, because this file is not clean. ",
+                  //   isUploadFile,
+                  //   buttonIndex,
+                  // });
+                  // return false;
+                  result = "NOT_CLEAN";
+                } else {
+                  // file is safe
+                  // result = true;
+                  result = "CLEAN";
+                }
+              }
+            }
+          }
+        }
+      })
+      .catch((error) => {
+        // const dataError = handleErrorCatch(error);
+
+        // const msg = `on /analyze/scan/ :: ${dataError}`;
+        // send("errorClient", { msg: dataError, isUploadFile, buttonIndex });
+        result = "NOT_CLEAN";
+      });
+
+    return result;
+  }
+
+  // 6- create file to scan
   async function createFileToScan(res) {
     console.log("run createFileToScan.");
     let url = `${FILE_SERVER_HOST}/analyze/scan/`;
@@ -613,8 +540,46 @@ io.on("connection", async function (socket) {
 
     const formData = new FormData();
     formData.append("file", fileStream);
-    transmissionType && formData.append("transmission_type", transmissionType);
+    formData.append("transmission_type", transmissionType);
 
+    const isSendFileToScan = requestFileToScan({
+      url,
+      formData,
+      isUploadFile,
+      buttonIndex,
+    });
+
+    console.log({ isSendFileToScan });
+
+    if (isSendFileToScan) {
+      const intervalId = setInterval(async () => {
+        const resultRequestCheckFile = await requestCheckFile({
+          file,
+          filePath,
+          buttonIndex,
+          isUploadFile,
+          transmissionType,
+        });
+
+        console.log({ resultRequestCheckFile });
+      }, 5000);
+    } else {
+      console.log("else of isSendFileToScan");
+      currentHashFile = null;
+      if (currentTempFile) {
+        removeFileTemporary(currentTempFile);
+      }
+    }
+  }
+
+  // 7- send post request to scan file
+  async function requestFileToScan({
+    url,
+    formData,
+    isUploadFile,
+    buttonIndex,
+  }) {
+    let result = false;
     await axios
       .post(url, formData, {
         auth: {
@@ -625,36 +590,118 @@ io.on("connection", async function (socket) {
           ...formData.getHeaders(),
           // Set the appropriate content-type for formData
         },
-
-        // onUploadProgress: (progressEvent) => {
-        //   const percentCompleted = (progressEvent.loaded / progressEvent.total) * 100;
-        //   send("checkFileIsClean", {
-        //     buttonIndex,
-        //     step: "PROCESSING",
-        //     process: percentCompleted.toFixed(2),
-        //   });
-        //   console.log(`Progress: ${percentCompleted.toFixed(2)}%`);
-        // },
       })
       .then((response) => {
-        send("checkFileIsClean", {
-          buttonIndex,
-          step: "PROCESSING",
-          isUploadFile,
-        });
+        result = true;
+        // send("checkFileIsClean", {
+        //   buttonIndex,
+        //   step: "PROCESSING",
+        //   isUploadFile,
+        // });
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
         const msg = `on createFileToScan /analyze/scan/ :: ${dataError}`;
+        if (isUploadFile) {
+          removeFileTemporary(filePath);
+        }
         send("errorClient", {
           msg: dataError,
           isUploadFile,
           buttonIndex,
         });
       });
-    if (isUploadFile) {
-      removeFileTemporary(filePath);
+    return result;
+  }
+
+  // 6- Send file to client
+  async function downloadFile(res, OK) {
+    console.log("run downloadFile.");
+    if (OK !== "OK") return; // prevent download form client
+
+    const file = res.file;
+    let fileName = file.split("/").slice(-1)[0];
+    let fileBuffer = await fsw.readFile(file);
+    send("sendfile", [fileBuffer, fileName]);
+    const directoryPath = path.dirname(file);
+    deleteFiles([file, directoryPath]);
+  }
+
+  // 7- Write client sent file
+  async function uploadFile(res, OK) {
+    console.log("run uploadFile.");
+    if (OK !== "OK") return; // prevent upload form client
+
+    let directory = res.directory;
+    let filePath = res.filePath;
+    let data = res.data;
+    let render = res.render;
+    let dirArr = filePath.split("/");
+    let folder = filePath.replace(dirArr[dirArr.length - 1], "");
+
+    await fsw.mkdir(folder, { recursive: true });
+    await fsw.writeFile(filePath, Buffer.from(data));
+    if (render) {
+      getFiles(directory);
     }
+    send("checkFileIsClean", {
+      buttonIndex: false,
+      step: "UPLOAD_SUCCESS",
+      isUploadFile: true,
+    });
+  }
+
+  // 8- Delete files
+  async function deleteFiles(res) {
+    console.log("run deleteFiles.");
+    let item = res[0];
+    let directory = res[1];
+    item = item.replace("|", "'");
+    if (fs.lstatSync(item).isDirectory()) {
+      await fsw.rm(item, { recursive: true });
+    } else {
+      await fsw.unlink(item);
+    }
+    getFiles(directory);
+  }
+
+  // Emit to user
+  function send(command, data) {
+    io.sockets.to(id).emit(command, data);
+  }
+
+  // Get file list for directory
+  async function getFiles(directory) {
+    try {
+      let items = await fsw.readdir(directory);
+      if (items.length > 0) {
+        let dirs = [];
+        let files = [];
+        for await (let item of items) {
+          let fullPath = directory + "/" + item;
+          if (fs.lstatSync(fullPath).isDirectory()) {
+            dirs.push(item);
+          } else {
+            files.push(item);
+          }
+        }
+        send("renderfiles", [dirs, files, directory]);
+      } else {
+        send("renderfiles", [[], [], directory]);
+      }
+    } catch (error) {
+      send("renderfiles", [[], [], directory]);
+    }
+  }
+
+  // Create a folder
+  async function createFolder(res) {
+    let dir = res[0];
+    let directory = res[1];
+    if (!fs.existsSync(dir)) {
+      await fsw.mkdir(dir);
+    }
+    getFiles(directory);
   }
 
   // errorClient
@@ -662,15 +709,19 @@ io.on("connection", async function (socket) {
     console.log("run errorClient in node.", res);
   }
 
+  function close() {
+    console.log("close connection socket.");
+  }
   // Incoming socket requests
   socket.on("open", checkAuth);
   socket.on("getfiles", getFiles);
-  socket.on("downloadfile", downloadFile);
-  socket.on("uploadfile", uploadFile);
+  // socket.on("downloadfile", downloadFile);
+  // socket.on("uploadfile", uploadFile);
   socket.on("deletefiles", deleteFiles);
   socket.on("createfolder", createFolder);
   socket.on("checkFileIsClean", checkFileIsClean);
   socket.on("errorClient", errorClient);
+  socket.on("close", close);
 });
 
 //// PCM Audio Wrapper ////
