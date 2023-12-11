@@ -3,17 +3,17 @@
 //// Env variables ////
 
 // production
-var CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
-var PASSWORD = process.env.PASSWORD || "abc";
-var FILE_SERVER_HOST =
-  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
-var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+// var CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
+// var PASSWORD = process.env.PASSWORD || "abc";
+// var FILE_SERVER_HOST =
+//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+// var MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
 // local for inside network
-// var CUSTOM_USER = "Radmehr.h@test1.local";
-// var PASSWORD = "qqqqqq1!";
-// var FILE_SERVER_HOST = "http://192.168.254.196:8001";
-// var MANAGER_HOST = "http://192.168.254.198:8000";
+var CUSTOM_USER = "Radmehr.h@test1.local";
+var PASSWORD = "qqqqqq1!";
+var FILE_SERVER_HOST = "http://192.168.254.196:8001";
+var MANAGER_HOST = "http://192.168.254.198:8001";
 
 // local Variables for outside network
 // var CUSTOM_USER = "Radmehr.h@npdco.local";
@@ -34,9 +34,9 @@ const FormData = require("form-data");
 var express = require("express");
 var app = require("express")();
 var http = require("http").Server(app);
+const mime = require("mime-types");
 
 var baseRouter = express.Router();
-
 var fsw = require("fs").promises;
 var fs = require("fs");
 
@@ -263,9 +263,12 @@ io.on("connection", async function (socket) {
     let file = res.file;
 
     let fileHash = null;
+    let mimeType = mime.lookup(filePath);
+
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
     let fileName = filePath.split("/").slice(-1)[0];
+    const transmissionType = res?.transmissionType;
 
     await getFileHash({ filePath, isUploadFile, file })
       .then((hash) => {
@@ -282,7 +285,7 @@ io.on("connection", async function (socket) {
       return;
     }
 
-    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}&file_hash=${fileHash}`;
+    let url = `${FILE_SERVER_HOST}/analyze/scan/?file_name=${fileName}&file_hash=${fileHash}&file_mime_type=${mimeType}`;
 
     await axios
       .get(url, {
@@ -295,86 +298,57 @@ io.on("connection", async function (socket) {
         },
       })
       .then(({ data }) => {
-        if (Array.isArray(data.results) && data?.results.length === 0) {
+        console.log({ data });
+        const status = data?.scan_result; // CLEAN  MALWARE IN_PROCESS TRY_AGAIN
+
+        if (
+          (Array.isArray(data.results) && data?.results.length === 0) ||
+          status === "TRY_AGAIN"
+        ) {
           // not created for scan
           createFileToScan(res);
         } else {
-          const antivirusesScannerStatus = data?.antiviruses_scanner_status;
-          const antivirusesStatusCode = data?.antiviruses_status_code;
-          const antivirusesScanResult = data?.antiviruses_scan_result;
-
-          const clamavScannerStatus = data?.clamav_scanner_status;
-          const clamavScanResult = data?.clamav_scan_result;
-
-          if (antivirusesScannerStatus === "IN_PROCESS") {
-            send("checkFileIsClean", {
-              buttonIndex,
-              step: "PROCESSING",
-              isUploadFile,
-            });
-            return false;
-          }
-
-          if (
-            antivirusesScannerStatus === "FINISHED" ||
-            antivirusesScannerStatus === "FAILED"
-          ) {
-            if (antivirusesStatusCode === 200) {
-              if (antivirusesScanResult) {
-                // file is malware
-                const directoryPath = path.dirname(filePath);
-                deleteFiles([filePath, directoryPath]);
-                send("errorClient", {
-                  msg: "Deleted File, because this file is not clean. ",
-                  isUploadFile,
-                });
-
-                return false;
-              } else {
-                // file is safe
-                // downloadFile(res);
-                result = true;
-              }
-            } else {
-              // antivirusesStatusCode is !200
-              if (clamavScannerStatus === "FAILED") {
-                // try again
-                send("errorClient", {
-                  msg: "scan is failed. try again",
-                  isUploadFile,
-                  buttonIndex,
-                });
-                return false;
+          switch (status) {
+            case "CLEAN":
+              if (transmissionType === "upload") {
+                uploadFile(
+                  {
+                    directory: res.file.directory,
+                    filePath: res.file.filePath,
+                    data: res.file.data,
+                    render: res.file.render,
+                  },
+                  "OK"
+                );
+              } else if (transmissionType === "download") {
+                downloadFile(res, "OK");
               }
 
-              if (clamavScannerStatus === "IN_PROCESS") {
-                // processing
-                send("checkFileIsClean", {
-                  isUploadFile,
-                  buttonIndex,
-                  step: "PROCESSING",
-                });
-                return false;
-              }
+              break;
 
-              if (clamavScannerStatus === "FINISHED") {
-                if (clamavScanResult) {
-                  // file is malware
-                  const directoryPath = path.dirname(filePath);
-                  deleteFiles([filePath, directoryPath]);
-                  send("errorClient", {
-                    msg: "Deleted File, because this file is not clean. ",
-                    isUploadFile,
-                    buttonIndex,
-                  });
-                  return false;
-                } else {
-                  // file is safe
-                  // downloadFile(res);
-                  result = true;
-                }
-              }
-            }
+            case "MALWARE":
+              const directoryPath = path.dirname(filePath);
+              deleteFiles([filePath, directoryPath]);
+              send("errorClient", {
+                msg: "Deleted File, because this file is not clean. ",
+                isUploadFile,
+              });
+              break;
+
+            case "IN_PROCESS":
+              send("checkFileIsClean", {
+                buttonIndex,
+                step: "PROCESSING",
+                isUploadFile,
+              });
+              break;
+
+            default:
+              send("errorClient", {
+                msg: `Contact Support. scan_result is: ${status}`,
+                isUploadFile,
+              });
+              break;
           }
         }
       })
@@ -544,34 +518,13 @@ io.on("connection", async function (socket) {
     });
 
     if (hasPermission) {
-      const isCleanFile = await requestCheckFile({
+      await requestCheckFile({
         file: res.file,
         filePath,
         buttonIndex,
         isUploadFile: transmissionType === "upload",
         transmissionType,
       });
-
-      if (isCleanFile) {
-        if (transmissionType === "download") {
-          downloadFile(res, "OK");
-        } else if (transmissionType === "upload") {
-          let directory = res.file.directory;
-          let filePath = res.file.filePath;
-          let data = res.file.data;
-          let render = res.file.render;
-          uploadFile(
-            {
-              directory,
-              filePath,
-              data,
-              render,
-            },
-            "OK"
-          );
-        }
-      }
-    } else {
     }
   }
 
@@ -623,18 +576,7 @@ io.on("connection", async function (socket) {
         },
         headers: {
           ...formData.getHeaders(),
-          // Set the appropriate content-type for formData
         },
-
-        // onUploadProgress: (progressEvent) => {
-        //   const percentCompleted = (progressEvent.loaded / progressEvent.total) * 100;
-        //   send("checkFileIsClean", {
-        //     buttonIndex,
-        //     step: "PROCESSING",
-        //     process: percentCompleted.toFixed(2),
-        //   });
-        //   console.log(`Progress: ${percentCompleted.toFixed(2)}%`);
-        // },
       })
       .then((response) => {
         send("checkFileIsClean", {
