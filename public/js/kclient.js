@@ -91,43 +91,43 @@ function audio() {
   $("#audioButton").addClass("icons-selected");
 }
 
-var audioContext = new (window.AudioContext || window.webkitAudioContext)();
-var mediaRecorder;
-var audioChunks = [];
+// var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+// var mediaRecorder;
+// var audioChunks = [];
 
-navigator.mediaDevices
-  .getUserMedia({ audio: true })
-  .then(function (stream) {
-    var audioInput = audioContext.createMediaStreamSource(stream);
-    mediaRecorder = new MediaRecorder(stream);
+// navigator.mediaDevices
+//   .getUserMedia({ audio: true })
+//   .then(function (stream) {
+//     var audioInput = audioContext.createMediaStreamSource(stream);
+//     mediaRecorder = new MediaRecorder(stream);
 
-    mediaRecorder.ondataavailable = function (event) {
-      if (event.data.size > 0) {
-        socket.emit("recordAudio", event.data);
-        audioChunks.push(event.data);
-      }
-    };
+//     mediaRecorder.ondataavailable = function (event) {
+//       if (event.data.size > 0) {
+//         socket.emit("recordAudio", event.data);
+//         audioChunks.push(event.data);
+//       }
+//     };
 
-    mediaRecorder.onstop = function () {
-      var audioBlob = new Blob(audioChunks, { type: "audio/wav" });
-      var audioUrl = URL.createObjectURL(audioBlob);
-      document.getElementById("audioPlayer").src = audioUrl;
-    };
+//     mediaRecorder.onstop = function () {
+//       // var audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+//       // var audioUrl = URL.createObjectURL(audioBlob);
+//       // document.getElementById("audioPlayer").src = audioUrl;
+//     };
 
-    audioInput.connect(audioContext.destination);
-  })
-  .catch(function (err) {
-    console.error("Error getting audio stream:", err);
-  });
+//     audioInput.connect(audioContext.destination);
+//   })
+//   .catch(function (err) {
+//     console.error("Error getting audio stream:", err);
+//   });
 
-function startRecord() {
-  audioChunks = [];
-  mediaRecorder.start();
-}
+// function startRecord() {
+//   audioChunks = [];
+//   mediaRecorder.start();
+// }
 
-function stopRecord() {
-  mediaRecorder.stop();
-}
+// function stopRecord() {
+//   mediaRecorder.stop();
+// }
 
 function recordClient() {
   //
