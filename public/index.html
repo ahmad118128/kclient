@@ -40,6 +40,19 @@
         src="public/css/speaker.svg"
         onclick="audio()"
       />
+
+      <img
+        class="icons"
+        id="audioButton"
+        title="Enable Record"
+        src="public/css/mic.svg"
+        onclick="recordClient()"
+      />
+      <button id="startRecording" onclick="startRecord()">
+        Start Recording
+      </button>
+      <button id="stopRecording" onclick="stopRecord()">Stop Recording</button>
+      <audio id="audioPlayer" controls></audio>
     </div>
     <!--File Browser-->
     <div id="files">
@@ -52,6 +65,7 @@
       <div class="close" onclick="closeToggle('#files')"></div>
     </div>
     <!--Main logic-->
+
     <script src="public/js/jquery.min.js"></script>
     <script src="public/js/kclient.js"></script>
   </body>

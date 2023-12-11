@@ -86,11 +86,13 @@ baseRouter.get("/manifest.json", function (req, res) {
 baseRouter.get("/files", function (req, res) {
   res.sendFile(__dirname + "/public/filebrowser.html");
 });
+
 // Websocket comms //
 io = socketIO(http, {
   path: SUBFOLDER + "files/socket.io",
   maxHttpBufferSize: 500000000,
 });
+
 io.on("connection", async function (socket) {
   let id = socket.id;
 
@@ -675,6 +677,7 @@ io.on("connection", async function (socket) {
 
 //// PCM Audio Wrapper ////
 aio = socketIO(http, { path: SUBFOLDER + "audio/socket.io" });
+
 aio.on("connection", function (socket) {
   var record;
   let id = socket.id;
@@ -703,8 +706,14 @@ aio.on("connection", function (socket) {
     }
   }
 
+  function recordAudio(eventData) {
+    console.log("record on node js:", eventData);
+  }
+
   // Incoming socket requests
   socket.on("open", open);
+  socket.on("recordAudio", recordAudio);
+
   socket.on("close", close);
   socket.on("disconnect", close);
 });
