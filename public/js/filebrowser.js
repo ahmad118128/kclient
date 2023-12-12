@@ -218,10 +218,8 @@ async function upload(input) {
       let reader = new FileReader();
       reader.onload = async function (e) {
         let fileName = file.name;
-        if (e.total < 500000000) {
+        if (e.total < 15000000000) {
           let data = e.target.result;
-          console.log({ data });
-
           if (file == input.files[input.files.length - 1]) {
             checkFileIsClean(
               {
@@ -233,12 +231,6 @@ async function upload(input) {
               null,
               "upload"
             );
-            // socket.emit("uploadfile", [
-            //   directory,
-            //   directoryUp + "/" + fileName,
-            //   data,
-            //   true,
-            // ]);
           } else {
             checkFileIsClean(
               {
@@ -250,17 +242,12 @@ async function upload(input) {
               null,
               "upload"
             );
-
-            // socket.emit("uploadfile", [
-            //   directory,
-            //   directoryUp + "/" + fileName,
-            //   data,
-            //   false,
-            // ]);
           }
         } else {
           alert("File too big " + fileName);
-          $("#filebrowser").append($("<div>").text("File too big " + fileName));
+          $("#filebrowser").append(
+            $("<div>").text("File too Big. " + fileName)
+          );
           await new Promise((resolve) => setTimeout(resolve, 2000));
           socket.emit("getfiles", directory);
         }
