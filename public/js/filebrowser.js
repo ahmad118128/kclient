@@ -173,19 +173,57 @@ function checkFileIsClean(file, buttonIndex, transmissionType) {
       : $("#uploadFileButton");
 
   originalButton = button;
-
   button
-    .text("Loading...")
+    .text("Send For Scan")
     .css({
       "background-color": "gray",
     })
     .prop("disabled", true);
 
-  socket.emit("checkFileIsClean", {
-    file,
-    buttonIndex,
-    transmissionType,
-  });
+  var chunkSize = 1024 * 1024; // 1MB
+  var chunks = Math.ceil(file.size / chunkSize);
+  let currentChunk = 0;
+
+  function sendNextChunk() {
+    var start = currentChunk * chunkSize;
+    var end = Math.min(start + chunkSize, file.size);
+    var blob = file.slice(start, end);
+
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      socket.emit("file_chunk", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        data: reader.result,
+        currentChunk: currentChunk,
+        totalChunks: chunks,
+      });
+
+      currentChunk++;
+      if (currentChunk < chunks) {
+        sendNextChunk();
+      }
+    };
+    reader.readAsArrayBuffer(blob);
+  }
+  if (transmissionType === "upload") {
+    sendNextChunk();
+  } else {
+    let directory = $("#filebrowser").data("directory");
+    let directoryUp = "";
+    if (directory == "/") {
+      directoryUp = "";
+    } else {
+      directoryUp = directory;
+    }
+
+    socket.emit("checkFileIsClean", {
+      file,
+      buttonIndex,
+      transmissionType,
+    });
+  }
 }
 
 // Send buffer to download blob
@@ -206,7 +244,7 @@ function sendFile(res) {
 // Upload files to current directory
 async function upload(input) {
   let directory = $("#filebrowser").data("directory");
-
+  let directoryUp = "";
   if (directory == "/") {
     directoryUp = "";
   } else {
@@ -214,46 +252,9 @@ async function upload(input) {
   }
 
   if (input.files && input.files[0]) {
-    for await (let file of input.files) {
-      let reader = new FileReader();
-      reader.onload = async function (e) {
-        let fileName = file.name;
-        if (e.total < 15000000000) {
-          let data = e.target.result;
-          if (file == input.files[input.files.length - 1]) {
-            checkFileIsClean(
-              {
-                directory,
-                filePath: directoryUp + "/" + fileName,
-                data,
-                render: true,
-              },
-              null,
-              "upload"
-            );
-          } else {
-            checkFileIsClean(
-              {
-                directory,
-                filePath: directoryUp + "/" + fileName,
-                data,
-                render: false,
-              },
-              null,
-              "upload"
-            );
-          }
-        } else {
-          alert("File too big " + fileName);
-          $("#filebrowser").append(
-            $("<div>").text("File too Big. " + fileName)
-          );
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          socket.emit("getfiles", directory);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    }
+    const file = input.files[0];
+
+    checkFileIsClean(file, null, "upload");
   }
 }
 
@@ -424,6 +425,7 @@ function getOriginalBtn(isUploadFile, buttonIndex) {
     .prop("disabled", false);
   return button;
 }
+
 // Handle status check file is clean
 async function responseCheckFileIsClean(res) {
   let error = res?.error;
@@ -491,8 +493,29 @@ async function responseCheckFileIsClean(res) {
   return;
 }
 
+function upload_complete() {
+  $("#uploadFileButton")
+    .text(`Send File To Scan, wait...`)
+    .css({
+      "background-color": "gray",
+    })
+    .prop("disabled", true);
+}
+
+function upload_progress(data) {
+  var progress = data.progress;
+  $("#uploadFileButton")
+    .text(`Upload For Scan ${progress}%`)
+    .css({
+      "background-color": "gray",
+    })
+    .prop("disabled", true);
+}
+
 // Incoming socket requests
 socket.on("renderfiles", renderFiles);
 socket.on("sendfile", sendFile);
 socket.on("errorClient", errorClient);
+socket.on("upload-complete", upload_complete);
+socket.on("upload-progress", upload_progress);
 socket.on("checkFileIsClean", responseCheckFileIsClean);

@@ -4,6 +4,8 @@ var fs = require("fs");
 var fsw = fs.promises;
 const { exec } = require("child_process");
 
+const UPLOADED_FILE_PATH = "uploaded_file";
+
 // handle error response
 function handleErrorCatch(error) {
   const errorData = error?.response?.data?.error;
@@ -47,11 +49,14 @@ function removeFileTemporary(filePath) {
 }
 
 async function getFileHash({ filePath, isUploadFile, file }) {
+  let mFilePath = filePath;
+
   if (isUploadFile) {
-    createFileTemp(filePath, file.data);
+    mFilePath = UPLOADED_FILE_PATH;
+    // createFileTemp(filePath, file.data);
   }
   return new Promise((resolve, reject) => {
-    exec(`md5sum "${filePath}"`, (error, stdout, stderr) => {
+    exec(`md5sum "${mFilePath}"`, (error, stdout, stderr) => {
       if (error) {
         reject(error);
         return;
@@ -78,11 +83,12 @@ function getFileExtensionFromName(fileName) {
   return `.${extension}`;
 }
 
-function createFileTemp(filePath, file) {
+async function createFileTemp(filePath, file) {
   try {
     fs.writeFileSync(filePath, file);
   } catch (error) {
     console.log("error on createFileTemp", error);
+    removeFileTemporary(filePath);
   }
 }
 
@@ -90,20 +96,28 @@ function createFileTemp(filePath, file) {
 async function getFileSize(filePath, file, transmissionType) {
   let size = null;
 
-  if (transmissionType === "download") {
-    try {
-      const stats = fs.statSync(filePath);
-      const fileSizeInBytes = stats.size;
-      size = bytesToMegabytes(fileSizeInBytes);
-    } catch (error) {
-      console.error(`Error getting file size: ${error.message}`);
-    }
-  } else if (transmissionType === "upload") {
-    createFileTemp(filePath, file.data);
-    const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
-    size = fileSizeInBytes.toFixed(0);
-    removeFileTemporary(filePath);
+  try {
+    const stats = fs.statSync(filePath);
+    const fileSizeInBytes = stats.size;
+    size = bytesToMegabytes(fileSizeInBytes);
+  } catch (error) {
+    console.error(`Error getting file size: ${error.message}`);
   }
+
+  // if (transmissionType === "download") {
+  //   try {
+  //     const stats = fs.statSync(filePath);
+  //     const fileSizeInBytes = stats.size;
+  //     size = bytesToMegabytes(fileSizeInBytes);
+  //   } catch (error) {
+  //     console.error(`Error getting file size: ${error.message}`);
+  //   }
+  // } else if (transmissionType === "upload") {
+  //   createFileTemp(filePath, file.data);
+  //   const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
+  //   size = fileSizeInBytes.toFixed(0);
+  //   removeFileTemporary(filePath);
+  // }
   console.log("FileSize:", size);
   return size;
 }
