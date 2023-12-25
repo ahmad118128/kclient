@@ -45,28 +45,28 @@ async function getFileHashHex(filePath) {
 }
 
 function removeFileTemporary(filePath) {
-  fs.unlinkSync(filePath);
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    console.log("error on removeFileTemporary:", error);
+  }
 }
 
 async function getFileHash({ filePath, isUploadFile, file }) {
-  let mFilePath = filePath;
-
-  if (isUploadFile) {
-    mFilePath = UPLOADED_FILE_PATH;
-    // createFileTemp(filePath, file.data);
-  }
+  console.log("9-run getFileHash");
   return new Promise((resolve, reject) => {
-    exec(`md5sum "${mFilePath}"`, (error, stdout, stderr) => {
+    exec(`md5sum "${filePath}"`, (error, stdout, stderr) => {
       if (error) {
+        if (isUploadFile) {
+          deleteIfUploadFileExist(filePath);
+        }
         reject(error);
         return;
       }
 
       const hash = stdout.split(" ")[0];
       console.log("fileHash:", hash);
-      if (isUploadFile) {
-        removeFileTemporary(filePath);
-      }
+
       resolve(hash);
     });
   });
@@ -94,30 +94,36 @@ async function createFileTemp(filePath, file) {
 
 // get File size
 async function getFileSize(filePath, file, transmissionType) {
+  console.log("3-run getFileSize");
   let size = null;
+  // console.log({ filePath, file, transmissionType });
+  // return;
 
-  try {
-    const stats = fs.statSync(filePath);
-    const fileSizeInBytes = stats.size;
-    size = bytesToMegabytes(fileSizeInBytes);
-  } catch (error) {
-    console.error(`Error getting file size: ${error.message}`);
-  }
-
-  // if (transmissionType === "download") {
-  //   try {
-  //     const stats = fs.statSync(filePath);
-  //     const fileSizeInBytes = stats.size;
-  //     size = bytesToMegabytes(fileSizeInBytes);
-  //   } catch (error) {
-  //     console.error(`Error getting file size: ${error.message}`);
-  //   }
-  // } else if (transmissionType === "upload") {
-  //   createFileTemp(filePath, file.data);
-  //   const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
-  //   size = fileSizeInBytes.toFixed(0);
-  //   removeFileTemporary(filePath);
+  // try {
+  //   const stats = fs.statSync(filePath);
+  //   const fileSizeInBytes = stats.size;
+  //   size = bytesToMegabytes(fileSizeInBytes);
+  // } catch (error) {
+  //   console.error(`Error getting file size: ${error.message}`);
+  //   deleteIfUploadFileExist(filePath);
   // }
+
+  if (transmissionType === "download") {
+    try {
+      const stats = fs.statSync(filePath);
+      const fileSizeInBytes = stats.size;
+      size = bytesToMegabytes(fileSizeInBytes);
+    } catch (error) {
+      console.error(`Error getting file size: ${error.message}`);
+    }
+  } else if (transmissionType === "upload") {
+    const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
+    size = fileSizeInBytes.toFixed(0);
+    // removeFileTemporary(filePath);
+  }
+  if (!size && transmissionType === "upload") {
+    deleteIfUploadFileExist(filePath);
+  }
   console.log("FileSize:", size);
   return size;
 }
@@ -139,6 +145,37 @@ function bytesToMegabytes(bytes) {
   return bytes / (1024 * 1024);
 }
 
+async function deleteIfUploadFileExist(filePath) {
+  console.log("filePath on deleteIfUploadFileExist", filePath);
+  try {
+    const stats = fs.statSync(filePath);
+    if (stats.isFile()) {
+      removeFileTemporary(filePath);
+      UPLOADED_FILE_PATH = null;
+    } else {
+      console.log("not exist file in fs.statSync");
+    }
+  } catch (error) {
+    console.log("on deleteIfUploadFileExist fs.statSync:", error);
+  }
+
+  // try {
+  //   // Check if the file exists
+  //   const stats = fs.stat(filePath);
+
+  //   // If fs.stat doesn't throw, the file exists, attempt to delete it
+  //   if (stats.isFile()) {
+  //     removeFileTemporary(filePath);
+  //     UPLOADED_FILE_PATH = null;
+  //   } else {
+  //     console.log("not exist file in fs.stat");
+  //   }
+  // } catch (error) {
+  //   console.log("on deleteIfUploadFileExist fs.stat:", error);
+  //   console.log("File uploaded not exist.");
+  // }
+}
+
 module.exports = {
   getFileHash,
   readFileSync,
@@ -148,4 +185,5 @@ module.exports = {
   handleErrorCatch,
   getFileHashHex,
   removeFileTemporary,
+  deleteIfUploadFileExist,
 };

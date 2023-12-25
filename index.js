@@ -6,35 +6,35 @@
 // const MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
 // local for inside network
-// const CUSTOM_USER = "Radmehr.h@test1.local";
-// const PASSWORD = "qqqqqq1!";
-// const FILE_SERVER_HOST = "http://192.168.254.196:8001";
-// const MANAGER_HOST = "http://192.168.254.198:8001";
+const CUSTOM_USER = "radmehr.h@test1.local";
+const PASSWORD = "qqqqqq1!";
+const FILE_SERVER_HOST = "http://192.168.254.196:8001";
+const MANAGER_HOST = "http://192.168.254.198:8000";
 
 // local constiables for outside network
-const CUSTOM_USER = "radmehr.h@npdco.local";
-const PASSWORD = "P@$$w0rd";
-const FILE_SERVER_HOST = "https://sandbox.npd-co.com";
-const MANAGER_HOST = "https://daas.npd-co.com";
+// const CUSTOM_USER = "radmehr.h@npdco.local";
+// const PASSWORD = "P@$$w0rd";
+// const FILE_SERVER_HOST = "https://sandbox.npd-co.com";
+// const MANAGER_HOST = "https://daas.npd-co.com";
 
 const IS_ADMIN = process.env.IS_ADMIN || false;
 const SUBFOLDER = process.env.SUBFOLDER || "/";
 const TITLE = process.env.TITLE || "KasmVNC Client";
 const FM_HOME = process.env.FM_HOME || "/config";
 
-const UPLOADED_FILE_PATH = "uploaded_file";
+let UPLOADED_FILE_PATH = null;
 
 var socketIO = require("socket.io");
+const path = require("path");
 const axios = require("axios");
 const FormData = require("form-data");
 var express = require("express");
 var app = require("express")();
 var http = require("http").Server(app);
 const mime = require("mime-types");
-
-var baseRouter = express.Router();
 var fsw = require("fs").promises;
 var fs = require("fs");
+var baseRouter = express.Router();
 
 // Audio init
 var audioEnabled = true;
@@ -64,10 +64,9 @@ pulse.on("error", function (error) {
 const {
   getFileHash,
   getFileExtensionFromName,
-  createFileTemp,
   getFileSize,
   handleErrorCatch,
-  removeFileTemporary,
+  deleteIfUploadFileExist,
 } = require("./functions.js");
 
 //// Server Paths Main ////
@@ -93,11 +92,14 @@ baseRouter.get("/manifest.json", function (req, res) {
 baseRouter.get("/files", function (req, res) {
   res.sendFile(__dirname + "/public/filebrowser.html");
 });
+
 // Websocket comms //
 io = socketIO(http, {
   path: SUBFOLDER + "files/socket.io",
   maxHttpBufferSize: 500000000,
 });
+
+// file browser socket connection
 io.on("connection", async function (socket) {
   let id = socket.id;
 
@@ -143,7 +145,9 @@ io.on("connection", async function (socket) {
     if (OK !== "OK") return; // prevent download form client
 
     const file = res.file;
-    let fileName = file.split("/").slice(-1)[0];
+    // let fileName = file.split("/").slice(-1)[0];
+    let fileName = res.fileName;
+
     let fileBuffer = await fsw.readFile(file);
     send("sendfile", [fileBuffer, fileName]);
     const directoryPath = path.dirname(file);
@@ -153,7 +157,9 @@ io.on("connection", async function (socket) {
   // Write client sent file
   async function uploadFile(res, OK) {
     console.log("run uploadFile.");
-    if (OK !== "OK") return; // prevent upload form client
+    if (OK !== "OK") {
+      return;
+    } // prevent upload form client
 
     let directory = res.directory;
     let filePath = res.filePath;
@@ -167,7 +173,7 @@ io.on("connection", async function (socket) {
     if (render) {
       getFiles(directory);
     }
-    send("checkFileIsClean", {
+    send("check-file-is-clean", {
       buttonIndex: false,
       step: "UPLOAD_SUCCESS",
       isUploadFile: true,
@@ -199,11 +205,13 @@ io.on("connection", async function (socket) {
   }
 
   // login user
-  async function requestLogin({ isUploadFile, buttonIndex }) {
+  async function requestLogin({ isUploadFile, buttonIndex, filePath }) {
     console.log("6- run requestLogin");
+    const url = `${MANAGER_HOST}/users/login/`;
+
     return await axios
       .post(
-        `${MANAGER_HOST}/users/login/`,
+        url,
         {
           email: CUSTOM_USER,
           password: PASSWORD,
@@ -219,8 +227,8 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
-        const msg = `on ${MANAGER_HOST}/users/login/:: ${error.message}`;
-        send("errorClient", {
+        console.log(`on ${url}: ${error.message}`);
+        send("error-client", {
           msg: dataError,
           isUploadFile,
           buttonIndex,
@@ -229,11 +237,11 @@ io.on("connection", async function (socket) {
   }
 
   // get user profile
-  async function requestGetProfile(token) {
+  async function requestGetProfile({ token, isUploadFile, filePath }) {
     console.log("7-run requestGetProfile");
-
+    const url = `${MANAGER_HOST}/users/profile/`;
     const profile = await axios
-      .get(`${MANAGER_HOST}/users/profile/`, {
+      .get(url, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -243,9 +251,8 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
-
-        const msg = `on ${MANAGER_HOST}/users/profile/:: ${dataError}`;
-        send("errorClient", {
+        console.log(`on ${url}: ${error.message}`);
+        send("error-client", {
           msg: dataError,
           isUploadFile: true,
           buttonIndex: false,
@@ -255,23 +262,31 @@ io.on("connection", async function (socket) {
   }
 
   // check access user
-  async function checkAccessUser({ isUploadFile, buttonIndex }) {
+  async function checkAccessUser({ isUploadFile, buttonIndex, filePath }) {
     console.log("5- run checkAccessUser", {
       CUSTOM_USER,
     });
-    const loginData = await requestLogin({ isUploadFile, buttonIndex });
+    const loginData = await requestLogin({
+      isUploadFile,
+      buttonIndex,
+      filePath,
+    });
     const token = loginData?.access_token;
 
     if (!token) {
       const msg = `token not valid.`;
-      send("errorClient", {
+      send("error-client", {
         msg,
         isUploadFile,
         buttonIndex,
       });
       return;
     } else {
-      const profile = await requestGetProfile(token);
+      const profile = await requestGetProfile({
+        token,
+        isUploadFile,
+        filePath,
+      });
       return profile;
     }
   }
@@ -282,14 +297,17 @@ io.on("connection", async function (socket) {
     let result = null;
     let filePath = res.filePath;
     let file = res.file;
-
-    let fileHash = null;
-    let mimeType = mime.lookup(filePath);
-
+    let mimeType = res.mimeType;
+    const transmissionType = res?.transmissionType;
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
-    let fileName = filePath.split("/").slice(-1)[0];
-    const transmissionType = res?.transmissionType;
+    let fileName = res.fileName;
+
+    let fileHash = null;
+    if (!mimeType) {
+      // file for download not have mimeType
+      mimeType = mime.lookup(filePath);
+    }
 
     await getFileHash({ filePath, isUploadFile, file })
       .then((hash) => {
@@ -298,7 +316,10 @@ io.on("connection", async function (socket) {
       .catch((error) => console.error("Error:", error));
 
     if (!fileHash) {
-      send("errorClient", {
+      if (isUploadFile) {
+        deleteIfUploadFileExist(filePath);
+      }
+      send("error-client", {
         msg: "error on get hash file.",
         isUploadFile,
         buttonIndex,
@@ -322,7 +343,7 @@ io.on("connection", async function (socket) {
       })
       .then(({ data }) => {
         const status = data?.scan_result; // CLEAN  MALWARE IN_PROCESS TRY_AGAIN
-
+        console.log("status of get:", status);
         if (Array.isArray(data.results) && data?.results.length === 0) {
           // not created for scan
           createFileToScan(res);
@@ -348,35 +369,42 @@ io.on("connection", async function (socket) {
             case "MALWARE":
               const directoryPath = path.dirname(filePath);
               deleteFiles([filePath, directoryPath]);
-              deleteIfUploadFileExist();
-              send("errorClient", {
+              send("error-client", {
                 msg: "Deleted File, because this file is not clean. ",
                 isUploadFile,
               });
               break;
 
             case "IN_PROCESS":
-              send("checkFileIsClean", {
+              send("check-file-is-clean", {
                 buttonIndex,
                 step: "PROCESSING",
                 isUploadFile,
               });
+              if (isUploadFile) {
+                deleteIfUploadFileExist(filePath);
+              }
               break;
 
             default:
-              send("errorClient", {
+              send("error-client", {
                 msg: `Contact Support. scan_result is: ${status}`,
                 isUploadFile,
               });
-              deleteIfUploadFileExist();
+              if (isUploadFile) {
+                deleteIfUploadFileExist(filePath);
+              }
               break;
           }
         }
       })
       .catch((error) => {
-        deleteIfUploadFileExist();
+        if (isUploadFile) {
+          deleteIfUploadFileExist(filePath);
+        }
+        console.log(`on ${url}:`, error.message);
         const dataError = handleErrorCatch(error);
-        send("errorClient", { msg: dataError, isUploadFile, buttonIndex });
+        send("error-client", { msg: dataError, isUploadFile, buttonIndex });
       });
 
     return result;
@@ -390,11 +418,21 @@ io.on("connection", async function (socket) {
     const transmissionType = res.transmissionType;
     const buttonIndex = res.buttonIndex;
     const isUploadFile = transmissionType === "upload";
-    const fileName = filePath.split("/").slice(-1)[0];
+    const fileName = res.fileName;
+    // const fileName = filePath.split("/").slice(-1)[0];
     const fileExtension = getFileExtensionFromName(fileName);
     const fileSize = await getFileSize(filePath, res.file, transmissionType);
-    const accessUser = await checkAccessUser({ isUploadFile, buttonIndex });
-    if (!accessUser) return null;
+    const accessUser = await checkAccessUser({
+      isUploadFile,
+      buttonIndex,
+      filePath,
+    });
+    if (!accessUser) {
+      if (isUploadFile) {
+        deleteIfUploadFileExist(filePath);
+      }
+      return null;
+    }
 
     const daasConfigs = accessUser?.daas_configs;
 
@@ -425,7 +463,7 @@ io.on("connection", async function (socket) {
 
       if (!userPermission.canDownloadFile) {
         // check can download
-        send("errorClient", {
+        send("error-client", {
           msg: "you can not download file.",
           isUploadFile: false,
           buttonIndex,
@@ -440,7 +478,7 @@ io.on("connection", async function (socket) {
       // check download file extension
       if (!userPermission.accessDownloadFileExtension) {
         // check file extension download
-        send("errorClient", {
+        send("error-client", {
           msg: `you can not download ${fileExtension} type.`,
           isUploadFile: false,
           buttonIndex,
@@ -455,7 +493,7 @@ io.on("connection", async function (socket) {
       // check max transmission download
       if (!userPermission.maxTransmissionDownloadSize) {
         // check access file size download
-        send("errorClient", {
+        send("error-client", {
           msg: `your file size is ${fileSize}. you can not download more than ${maxTransmissionDownloadSize} mb.`,
           isUploadFile: false,
           buttonIndex,
@@ -471,7 +509,7 @@ io.on("connection", async function (socket) {
       // check can user upload
       if (!userPermission.canUploadFile) {
         // check can Upload
-        send("errorClient", {
+        send("error-client", {
           msg: "you can not upload file.",
           isUploadFile: true,
           buttonIndex,
@@ -486,7 +524,7 @@ io.on("connection", async function (socket) {
       // check access file extension
       if (!userPermission.accessUploadFileExtension) {
         // check file extension Upload
-        send("errorClient", {
+        send("error-client", {
           msg: `you can not upload ${fileExtension} type.`,
           isUploadFile: true,
           buttonIndex,
@@ -501,7 +539,7 @@ io.on("connection", async function (socket) {
       // check max transmission upload
       if (!userPermission.maxTransmissionUploadSize) {
         // check access file size Upload
-        send("errorClient", {
+        send("error-client", {
           msg: `your file size is ${fileSize}. you can not upload more than ${maxTransmissionUploadSize} mb.`,
           isUploadFile: true,
           buttonIndex,
@@ -522,13 +560,15 @@ io.on("connection", async function (socket) {
     console.log("1- run checkFileIsClean.");
     const transmissionType = res.transmissionType;
     const buttonIndex = res.buttonIndex;
-
+    const fileName = res.fileName;
+    const mimeType = res.type;
     let filePath = res.file;
     // if (transmissionType === "upload") {
     //   filePath = res.file.filePath;
     // }
 
     const hasPermission = await checkAccessPermission({
+      fileName,
       filePath,
       file: res.file,
       transmissionType,
@@ -537,12 +577,18 @@ io.on("connection", async function (socket) {
 
     if (hasPermission) {
       await requestCheckFile({
+        mimeType,
+        fileName,
         file: res.file,
         filePath,
         buttonIndex,
         isUploadFile: transmissionType === "upload",
         transmissionType,
       });
+    } else {
+      if (transmissionType === "upload") {
+        deleteIfUploadFileExist(filePath);
+      }
     }
   }
 
@@ -550,21 +596,34 @@ io.on("connection", async function (socket) {
   async function createFileToScan(res) {
     console.log("11-run createFileToScan.");
     let url = `${FILE_SERVER_HOST}/analyze/scan/`;
-
     let filePath = res.filePath;
     let buttonIndex = res?.buttonIndex;
     let isUploadFile = res?.isUploadFile;
     let transmissionType = res?.transmissionType; // "download" || "upload"
+    // let file = res?.file;
+    // file = res?.file.data;
 
-    let file = res?.file;
-    let fileStream = null;
+    try {
+      fileBuffer = await fsw.readFile(filePath);
+    } catch (error) {
+      const msg = `on readFile:: ${error.message}`;
+      if (isUploadFile) {
+        deleteIfUploadFileExist(filePath);
+      }
+      send("error-client", {
+        msg,
+        isUploadFile,
+        buttonIndex,
+      });
+      return false;
+    }
 
     // if (!isUploadFile) {
     //   try {
     //     fileBuffer = await fsw.readFile(filePath);
     //   } catch (error) {
     //     const msg = `on readFile:: ${error.message}`;
-    //     send("errorClient", {
+    //     send("error-client", {
     //       msg,
     //       isUploadFile,
     //       buttonIndex,
@@ -581,17 +640,32 @@ io.on("connection", async function (socket) {
 
     //   fileStream = readStream;
     // }
-    file = res?.file.data;
+    // file = res?.file.data;
     // createFileTemp(filePath, file);
 
     // Create a ReadStream from the temporary file
-    const readStream = fs.createReadStream(filePath);
+    let readStream = null;
 
-    fileStream = readStream;
-
+    try {
+      readStream = fs.createReadStream(filePath);
+    } catch (error) {
+      console.log("error on fs.createReadStream", { error });
+    }
+    // console.log({ readStream });
+    if (!readStream) {
+      if (isUploadFile) {
+        deleteIfUploadFileExist(filePath);
+      }
+      send("error-client", {
+        msg,
+        isUploadFile,
+        buttonIndex,
+      });
+      return false;
+    }
     const formData = new FormData();
-    formData.append("file", fileStream);
-    transmissionType && formData.append("transmission_type", transmissionType);
+    formData.append("file", readStream);
+    formData.append("transmission_type", transmissionType);
 
     await axios
       .post(url, formData, {
@@ -603,16 +677,19 @@ io.on("connection", async function (socket) {
           ...formData.getHeaders(),
         },
         onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
+          const progress = Math.round(
             (progressEvent.loaded * 100) / progressEvent.total
           );
-          console.log("percentCompleted");
           // Emit an event for the upload progress
-          // socket.emit('uploadProgress', percentCompleted);
+          socket.emit("upload-progress", {
+            transmissionType,
+            progress,
+            buttonIndex,
+          });
         },
       })
       .then((response) => {
-        send("checkFileIsClean", {
+        send("check-file-is-clean", {
           buttonIndex,
           step: "PROCESSING",
           isUploadFile,
@@ -620,15 +697,18 @@ io.on("connection", async function (socket) {
       })
       .catch((error) => {
         const dataError = handleErrorCatch(error);
-        deleteIfUploadFileExist();
-        send("errorClient", {
+        console.log(`on ${url}:`, error.message);
+        if (isUploadFile) {
+          deleteIfUploadFileExist(filePath);
+        }
+        send("error-client", {
           msg: dataError,
           isUploadFile,
           buttonIndex,
         });
       });
     if (isUploadFile) {
-      deleteIfUploadFileExist();
+      deleteIfUploadFileExist(filePath);
       // removeFileTemporary(filePath);
     }
   }
@@ -641,34 +721,47 @@ io.on("connection", async function (socket) {
   let fileBuffer = [];
   let fileSize = 0;
 
-  async function file_chunk(chunk) {
-    fileBuffer.push(Buffer.from(chunk.data));
-    fileSize += chunk.data.byteLength;
+  async function file_chunk({
+    filePath,
+    fileName,
+    type,
+    size,
+    data,
+    currentChunk,
+    totalChunks,
+  }) {
+    fileBuffer.push(Buffer.from(data));
+    fileSize += data.byteLength;
 
     // Calculate current progress
-    const progress = Math.floor((fileSize / chunk.size) * 100);
+    const progress = Math.floor((fileSize / size) * 100);
 
     // Emit the progress update back to the client
-    socket.emit("upload-progress", { progress });
+    socket.emit("upload-progress", {
+      transmissionType: "upload",
+      progress,
+      buttonIndex: null,
+    });
 
-    if (chunk.currentChunk + 1 === chunk.totalChunks) {
+    if (currentChunk + 1 === totalChunks) {
       let fileBufferCombined = Buffer.concat(fileBuffer);
 
       // Asynchronous file writing
       try {
-        await fsw.writeFile(UPLOADED_FILE_PATH, fileBufferCombined);
-        console.log("File upload complete");
-
+        await fsw.writeFile(filePath, fileBufferCombined);
         // send to the scan
+        UPLOADED_FILE_PATH = filePath;
         checkFileIsClean({
-          file: UPLOADED_FILE_PATH,
+          type,
+          fileName,
+          file: filePath,
           buttonIndex: null,
           transmissionType: "upload",
         });
         socket.emit("upload-complete");
       } catch (err) {
         console.error("Error writing file:", err);
-        socket.emit("errorClient", "error on upload chunk, contact us.");
+        socket.emit("error-client", "error on upload chunk, contact us.");
       }
 
       // Reset for next file
@@ -677,34 +770,20 @@ io.on("connection", async function (socket) {
     }
   }
 
-  async function deleteIfUploadFileExist() {
-    try {
-      // Check if the file exists
-      const stats = fs.stat(UPLOADED_FILE_PATH);
-
-      // If fs.stat doesn't throw, the file exists, attempt to delete it
-      if (stats.isFile()) {
-        removeFileTemporary(UPLOADED_FILE_PATH);
-      }
-    } catch (error) {
-      console.log("File uploaded not exist.");
-    }
-  }
-
   async function close() {
     console.log("Connection closed or disconnected");
-    deleteIfUploadFileExist();
+    if (UPLOADED_FILE_PATH) {
+      deleteIfUploadFileExist(UPLOADED_FILE_PATH);
+    }
   }
 
   // Incoming socket requests
   socket.on("open", checkAuth);
   socket.on("getfiles", getFiles);
-  socket.on("downloadfile", downloadFile);
-  socket.on("uploadfile", uploadFile);
   socket.on("deletefiles", deleteFiles);
   socket.on("createfolder", createFolder);
-  socket.on("checkFileIsClean", checkFileIsClean);
-  socket.on("errorClient", errorClient);
+  socket.on("check-file-is-clean", checkFileIsClean);
+  socket.on("error-client", errorClient);
   socket.on("file_chunk", file_chunk);
   socket.on("disconnect", close);
   socket.on("close", close);

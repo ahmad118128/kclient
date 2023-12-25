@@ -134,7 +134,7 @@ async function renderFiles(data) {
               buttonIndex +
               "','download');",
           })
-          .text("Download")
+          .text("Scan To Download")
       );
 
       for await (item of [link, type, del, downloadTd]) {
@@ -167,6 +167,7 @@ function downloadFile(file, uniqueId) {
 
 // checkFileIsClean
 function checkFileIsClean(file, buttonIndex, transmissionType) {
+  let directory = $("#filebrowser").data("directory");
   let button =
     transmissionType === "download"
       ? $("#" + downloadButtonId + buttonIndex)
@@ -180,45 +181,40 @@ function checkFileIsClean(file, buttonIndex, transmissionType) {
     })
     .prop("disabled", true);
 
-  var chunkSize = 1024 * 1024; // 1MB
-  var chunks = Math.ceil(file.size / chunkSize);
-  let currentChunk = 0;
-
-  function sendNextChunk() {
-    var start = currentChunk * chunkSize;
-    var end = Math.min(start + chunkSize, file.size);
-    var blob = file.slice(start, end);
-
-    var reader = new FileReader();
-    reader.onload = function (e) {
-      socket.emit("file_chunk", {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        data: reader.result,
-        currentChunk: currentChunk,
-        totalChunks: chunks,
-      });
-
-      currentChunk++;
-      if (currentChunk < chunks) {
-        sendNextChunk();
-      }
-    };
-    reader.readAsArrayBuffer(blob);
-  }
   if (transmissionType === "upload") {
-    sendNextChunk();
-  } else {
-    let directory = $("#filebrowser").data("directory");
-    let directoryUp = "";
-    if (directory == "/") {
-      directoryUp = "";
-    } else {
-      directoryUp = directory;
+    var chunkSize = 1024 * 1024; // 1MB
+    var chunks = Math.ceil(file.size / chunkSize);
+    let currentChunk = 0;
+    const filePath = `${directory}/${file.name}`;
+    function sendNextChunk() {
+      var start = currentChunk * chunkSize;
+      var end = Math.min(start + chunkSize, file.size);
+      var blob = file.slice(start, end);
+
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        socket.emit("file_chunk", {
+          filePath,
+          fileName: file.name,
+          type: file.type,
+          size: file.size,
+          data: reader.result,
+          currentChunk: currentChunk,
+          totalChunks: chunks,
+        });
+
+        currentChunk++;
+        if (currentChunk < chunks) {
+          sendNextChunk();
+        }
+      };
+      reader.readAsArrayBuffer(blob);
     }
 
-    socket.emit("checkFileIsClean", {
+    sendNextChunk();
+  } else {
+    socket.emit("check-file-is-clean", {
+      fileName: file.split("/").slice(-1)[0],
       file,
       buttonIndex,
       transmissionType,
@@ -253,7 +249,6 @@ async function upload(input) {
 
   if (input.files && input.files[0]) {
     const file = input.files[0];
-
     checkFileIsClean(file, null, "upload");
   }
 }
@@ -288,49 +283,7 @@ function createFolder() {
 // Handle drag and drop
 async function dropFiles(ev) {
   ev.preventDefault();
-  $("#filebrowser").empty();
-  $("#filebrowser").append($("<div>").attr("id", "loading"));
-  $("#dropzone").css({ visibility: "hidden", opacity: 0 });
-  let directory = $("#filebrowser").data("directory");
-  if (directory == "/") {
-    directoryUp = "";
-  } else {
-    directoryUp = directory;
-  }
-  let items = await getAllFileEntries(event.dataTransfer.items);
-  for await (let item of items) {
-    let fullPath = item.fullPath;
-    item.file(async function (file) {
-      let reader = new FileReader();
-      reader.onload = async function (e) {
-        let fileName = file.name;
-        if (e.total < 200000000) {
-          let data = e.target.result;
-          $("#filebrowser").append($("<div>").text("Uploading " + fileName));
-          if (item == items[items.length - 1]) {
-            socket.emit("uploadfile", [
-              directory,
-              directoryUp + "/" + fullPath,
-              data,
-              true,
-            ]);
-          } else {
-            socket.emit("uploadfile", [
-              directory,
-              directoryUp + "/" + fullPath,
-              data,
-              false,
-            ]);
-          }
-        } else {
-          $("#filebrowser").append($("<div>").text("File too big " + fileName));
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          socket.emit("getfiles", directory);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
-  }
+  console.log("dropFiles");
 }
 // Drop handler function to get all files
 async function getAllFileEntries(dataTransferItemList) {
@@ -414,8 +367,8 @@ function errorClient({ msg, isUploadFile, buttonIndex }) {
 }
 
 // Get Original Button
-function getOriginalBtn(isUploadFile, buttonIndex) {
-  const textButton = isUploadFile ? "Upload File" : "Download";
+function getOriginalBtn({ isUploadFile, buttonIndex }) {
+  const textButton = isUploadFile ? "Scan To Upload File" : "Scan To Download";
   let button = !isUploadFile
     ? $("#" + downloadButtonId + buttonIndex)
     : $("#uploadFileButton");
@@ -427,7 +380,7 @@ function getOriginalBtn(isUploadFile, buttonIndex) {
 }
 
 // Handle status check file is clean
-async function responseCheckFileIsClean(res) {
+async function socketCheckFileIsClean(res) {
   let error = res?.error;
   let buttonIndex = res?.buttonIndex;
   let isUploadFile = res?.isUploadFile;
@@ -437,7 +390,7 @@ async function responseCheckFileIsClean(res) {
     return;
   }
 
-  let button = getOriginalBtn(isUploadFile, buttonIndex);
+  let button = getOriginalBtn({ isUploadFile, buttonIndex });
 
   switch (res?.step) {
     case "CREATE_TO_SCAN":
@@ -456,11 +409,15 @@ async function responseCheckFileIsClean(res) {
       break;
 
     case "CLEAN":
+      const textButton = isUploadFile
+        ? "Clean To Upload File"
+        : "Clean To Download";
+
       button
         .css({
-          "background-color": "green",
+          "background-color": "darkgreen",
         })
-        .text("Download");
+        .text(textButton);
       break;
 
     case "PROCESSING":
@@ -468,6 +425,9 @@ async function responseCheckFileIsClean(res) {
         "<span id='PROCESSING'>Processing, Please Wait.</span>"
       );
       setTimeout(function () {
+        button.text("Scanning, Check Again.").css({
+          "background-color": "darkorange",
+        });
         $("#PROCESSING").replaceWith(button);
         if (isUploadFile) {
           // reset input for brows file again
@@ -493,7 +453,7 @@ async function responseCheckFileIsClean(res) {
   return;
 }
 
-function upload_complete() {
+function uploadComplete() {
   $("#uploadFileButton")
     .text(`Send File To Scan, wait...`)
     .css({
@@ -502,9 +462,12 @@ function upload_complete() {
     .prop("disabled", true);
 }
 
-function upload_progress(data) {
-  var progress = data.progress;
-  $("#uploadFileButton")
+function uploadProgress({ transmissionType, progress, buttonIndex }) {
+  const button = getOriginalBtn({
+    isUploadFile: transmissionType === "upload",
+    buttonIndex,
+  });
+  button
     .text(`Upload For Scan ${progress}%`)
     .css({
       "background-color": "gray",
@@ -515,7 +478,7 @@ function upload_progress(data) {
 // Incoming socket requests
 socket.on("renderfiles", renderFiles);
 socket.on("sendfile", sendFile);
-socket.on("errorClient", errorClient);
-socket.on("upload-complete", upload_complete);
-socket.on("upload-progress", upload_progress);
-socket.on("checkFileIsClean", responseCheckFileIsClean);
+socket.on("error-client", errorClient);
+socket.on("upload-complete", uploadComplete);
+socket.on("upload-progress", uploadProgress);
+socket.on("check-file-is-clean", socketCheckFileIsClean);
