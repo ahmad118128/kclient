@@ -23,7 +23,7 @@ function readFileSync(filePath) {
     const content = fs.readFileSync(filePath, "utf-8");
     return content;
   } catch (error) {
-    console.log("error on readFileSync:", error);
+    console.log("error on readFileSync:", error.message);
     return null;
   }
 }
@@ -48,7 +48,7 @@ function removeFileTemporary(filePath) {
   try {
     fs.unlinkSync(filePath);
   } catch (error) {
-    console.log("error on removeFileTemporary:", error);
+    console.log("error on removeFileTemporary:", error.message);
   }
 }
 
@@ -87,7 +87,7 @@ async function createFileTemp(filePath, file) {
   try {
     fs.writeFileSync(filePath, file);
   } catch (error) {
-    console.log("error on createFileTemp", error);
+    console.log("error on createFileTemp", error.message);
     removeFileTemporary(filePath);
   }
 }
@@ -108,19 +108,32 @@ async function getFileSize(filePath, file, transmissionType) {
   //   deleteIfUploadFileExist(filePath);
   // }
 
-  if (transmissionType === "download") {
-    try {
-      const stats = fs.statSync(filePath);
-      const fileSizeInBytes = stats.size;
-      size = bytesToMegabytes(fileSizeInBytes);
-    } catch (error) {
-      console.error(`Error getting file size: ${error.message}`);
+  try {
+    const stats = fs.statSync(filePath);
+    const fileSizeInBytes = stats.size;
+    size = bytesToMegabytes(fileSizeInBytes);
+    console.log("-----------------", size);
+  } catch (error) {
+    console.error(`------------////: ${error.message}`);
+    if (transmissionType === "upload") {
+      removeFileTemporary(filePath);
     }
-  } else if (transmissionType === "upload") {
-    const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
-    size = fileSizeInBytes.toFixed(0);
-    // removeFileTemporary(filePath);
   }
+
+  // if (transmissionType === "download") {
+  //   try {
+  //     const stats = fs.statSync(filePath);
+  //     const fileSizeInBytes = stats.size;
+  //     size = bytesToMegabytes(fileSizeInBytes);
+  //   } catch (error) {
+  //     console.error(`Error getting file size: ${error.message}`);
+  //   }
+  // } else if (transmissionType === "upload") {
+  //   const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
+  //   size = fileSizeInBytes.toFixed(0);
+  //   // removeFileTemporary(filePath);
+  // }
+
   if (!size && transmissionType === "upload") {
     deleteIfUploadFileExist(filePath);
   }
@@ -156,7 +169,7 @@ async function deleteIfUploadFileExist(filePath) {
       console.log("not exist file in fs.statSync");
     }
   } catch (error) {
-    console.log("on deleteIfUploadFileExist fs.statSync:", error);
+    console.log("on deleteIfUploadFileExist:", error.message);
   }
 
   // try {

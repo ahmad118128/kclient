@@ -2,9 +2,27 @@ var host = window.location.hostname;
 var port = window.location.port;
 var protocol = window.location.protocol;
 var path = window.location.pathname;
-var downloadButtonId = "downloadButton_";
-var sendToScanButtonId = "downloadButton_";
+const downloadButtonId = "downloadButton_";
+const sendToScanButtonId = "downloadButton_";
+const uploadButtonId = "uploadFileButton";
+const checkStatusButtonId = "checkStatusButton";
+const checkStatusSpanId = "checkStatusSpan";
+const checkStatusMsgId = "checkStatusMsg";
+const checkStatusButton = `<button id="${checkStatusButtonId}" onClick="checkStatusHandler()">Check Status</button>`;
+let scannedFileInfo = null;
 var originalButton = null;
+const checkStatusMsg = (downloadBtnIndex) =>
+  `<span id="${
+    downloadBtnIndex
+      ? `${checkStatusMsgId}_${downloadBtnIndex}`
+      : checkStatusMsgId
+  }">Start Process.</span>`;
+const checkStatusSpan = (downloadBtnIndex) =>
+  `<span id="${
+    downloadBtnIndex
+      ? `${checkStatusSpanId}_${downloadBtnIndex}`
+      : checkStatusSpanId
+  }">${checkStatusButton} ${checkStatusMsg(downloadBtnIndex)}</span>`;
 
 var socket = io(protocol + "//" + host + ":" + port, {
   path: path + "/socket.io",
@@ -106,7 +124,7 @@ async function renderFiles(data) {
     for await (let file of files) {
       let tableRow = $("<tr>");
       let fileClean = file.replace("'", "|");
-      let buttonIndex = files.indexOf(file);
+      let downloadBtnIndex = files.indexOf(file);
 
       let link = $("<td>").addClass("file").text(file);
       let type = $("<td>").text("File");
@@ -124,17 +142,17 @@ async function renderFiles(data) {
         $("<button>")
           .addClass("checkFileIsClean")
           .attr({
-            id: downloadButtonId + buttonIndex,
+            id: downloadButtonId + downloadBtnIndex,
             onclick:
               "checkFileIsClean('" +
               directoryClean +
               "/" +
               fileClean +
               "','" +
-              buttonIndex +
+              downloadBtnIndex +
               "','download');",
           })
-          .text("Scan To Download")
+          .text("Safe Download")
       );
 
       for await (item of [link, type, del, downloadTd]) {
@@ -166,12 +184,17 @@ function downloadFile(file, uniqueId) {
 }
 
 // checkFileIsClean
-function checkFileIsClean(file, buttonIndex, transmissionType) {
+function checkFileIsClean(file, downloadBtnIndex, transmissionType) {
+  console.log("client on checkFileIsClean:", {
+    file,
+    downloadBtnIndex,
+    transmissionType,
+  });
   let directory = $("#filebrowser").data("directory");
   let button =
     transmissionType === "download"
-      ? $("#" + downloadButtonId + buttonIndex)
-      : $("#uploadFileButton");
+      ? $("#" + downloadButtonId + downloadBtnIndex)
+      : $(`#${uploadButtonId}`);
 
   originalButton = button;
   button
@@ -186,6 +209,8 @@ function checkFileIsClean(file, buttonIndex, transmissionType) {
     var chunks = Math.ceil(file.size / chunkSize);
     let currentChunk = 0;
     const filePath = `${directory}/${file.name}`;
+    // const filePath = `/tmp/config/${file.name}`;
+
     function sendNextChunk() {
       var start = currentChunk * chunkSize;
       var end = Math.min(start + chunkSize, file.size);
@@ -216,7 +241,7 @@ function checkFileIsClean(file, buttonIndex, transmissionType) {
     socket.emit("check-file-is-clean", {
       fileName: file.split("/").slice(-1)[0],
       file,
-      buttonIndex,
+      downloadBtnIndex,
       transmissionType,
     });
   }
@@ -350,39 +375,140 @@ function allowDrop(ev) {
   ev.preventDefault();
 }
 
-// reset upload input
-function resetUploadInput() {
+// get original button text
+function getOriginalButtonText(isUploadFile) {
+  return isUploadFile ? "Safe Upload" : "Safe Download";
+}
+
+// empty upload input
+function emptyUploadInput() {
   $("#uploadInput").val("");
 }
 
-// Disabled default drag and drop
-function errorClient({ msg, isUploadFile, buttonIndex }) {
-  if (isUploadFile) {
-    resetUploadInput();
+// get checkStatusSpan in Dom
+function getCheckStatusSpan(downloadBtnIndex) {
+  if (downloadBtnIndex) {
+    return $(`#${checkStatusSpanId}_${downloadBtnIndex}`);
   }
-  if (isUploadFile || buttonIndex) {
-    getOriginalBtn(isUploadFile, buttonIndex);
+  return $(`#${checkStatusSpanId}`);
+}
+
+// get checkStatusSpanMsg in Dom
+function getCheckStatusMsg(downloadBtnIndex) {
+  if (downloadBtnIndex) {
+    return $(`#${checkStatusMsgId}_${downloadBtnIndex}`);
   }
+  return $(`#${checkStatusMsgId}`);
+}
+
+// check is set checkStatusSpan in Dom
+function isSetCheckStatusSpan(downloadBtnIndex) {
+  if (downloadBtnIndex) {
+    return getCheckStatusSpan(downloadBtnIndex).length;
+  }
+  return getCheckStatusSpan().length;
+}
+
+// reset upload Button
+function resetUploadButton() {
+  emptyUploadInput();
+  const defaultUploadBtn = getDefaultBtn(); // defaultUploadBtn may be string button not a function
+
+  if (isSetCheckStatusSpan()) {
+    getCheckStatusSpan().replaceWith(defaultUploadBtn);
+  } else {
+    $(`#${uploadButtonId}`)
+      .text(getOriginalButtonText(true))
+      .css("background-color", "rgba(9, 2, 2, 0.6)")
+      .prop("disabled", false);
+  }
+}
+
+// reset download button
+function resetDownloadButton(downloadBtnIndex) {
+  if (isSetCheckStatusSpan(downloadBtnIndex)) {
+    const defaultDownloadBtn = getDefaultBtn({
+      downloadBtnIndex,
+    });
+    getCheckStatusSpan(downloadBtnIndex).replaceWith(defaultDownloadBtn);
+  } else {
+    $("#" + downloadButtonId + downloadBtnIndex)
+      .text(getOriginalButtonText(false))
+      .css("background-color", "rgba(9, 2, 2, 0.6)")
+      .prop("disabled", false);
+  }
+}
+
+// alert message
+function errorClient({ msg, isUploadFile, downloadBtnIndex }) {
+  if (downloadBtnIndex) {
+    resetDownloadButton(downloadBtnIndex);
+  } else {
+    resetUploadButton();
+  }
+
   alert(msg);
 }
 
 // Get Original Button
-function getOriginalBtn({ isUploadFile, buttonIndex }) {
-  const textButton = isUploadFile ? "Scan To Upload File" : "Scan To Download";
-  let button = !isUploadFile
-    ? $("#" + downloadButtonId + buttonIndex)
-    : $("#uploadFileButton");
-  button
-    .text(textButton)
-    .css("background-color", "rgba(9, 2, 2, 0.6)")
-    .prop("disabled", false);
-  return button;
+function getDefaultBtn(res) {
+  const downloadBtnIndex = res?.downloadBtnIndex;
+  if (downloadBtnIndex) {
+    if ($("#" + downloadButtonId + downloadBtnIndex).length) {
+      return $("#" + downloadButtonId + downloadBtnIndex)
+        .text(getOriginalButtonText(false))
+        .css("background-color", "rgba(9, 2, 2, 0.6)")
+        .prop("disabled", false);
+    }
+    const filePath = res?.filePath;
+    return `<button class="checkFileIsClean" id="${downloadButtonId}${downloadBtnIndex}" onclick="checkFileIsClean(${filePath},${downloadBtnIndex},'download');">Safe Download</button>`;
+  } else {
+    if ($(`#${uploadButtonId}`).length) {
+      return $(`#${uploadButtonId}`)
+        .text(getOriginalButtonText(true))
+        .css("background-color", "rgba(9, 2, 2, 0.6)")
+        .prop("disabled", false);
+    }
+  }
+  return `<button id="${uploadButtonId}" onclick="$('#uploadInput').trigger( 'click' )">Safe Upload</button>`;
+  // let button = downloadBtnIndex
+  //   ? $("#" + downloadButtonId + downloadBtnIndex)
+  //   : $(`#${uploadButtonId}`);
+  // button
+  //   .text(getOriginalButtonText(!downloadBtnIndex))
+  //   .css("background-color", "rgba(9, 2, 2, 0.6)")
+  //   .prop("disabled", false);
+  // return button;
+}
+
+// set checkStatusBtn to Dom
+// replace with default button
+function setCheckStatusSpan(downloadBtnIndex) {
+  const defaultBtn = getDefaultBtn({ downloadBtnIndex });
+
+  defaultBtn.replaceWith(checkStatusSpan(downloadBtnIndex));
+
+  // if (downloadBtnIndex) {
+  //   $(`#${downloadButtonId}${downloadBtnIndex}`).replaceWith(
+  //     checkStatusSpan(downloadBtnIndex)
+  //   );
+  // } else {
+  //   $(`#${uploadButtonId}`).replaceWith(checkStatusSpan());
+  // }
+}
+
+// Handle check status file is clean
+async function checkStatusHandler() {
+  console.log("run checkStatusHandler()");
+  socket.emit("request", {
+    type: "CHECK_STATUS",
+  });
 }
 
 // Handle status check file is clean
 async function socketCheckFileIsClean(res) {
   let error = res?.error;
-  let buttonIndex = res?.buttonIndex;
+  let downloadBtnIndex = res?.downloadBtnIndex;
   let isUploadFile = res?.isUploadFile;
 
   if (error) {
@@ -390,59 +516,64 @@ async function socketCheckFileIsClean(res) {
     return;
   }
 
-  let button = getOriginalBtn({ isUploadFile, buttonIndex });
+  // let defaultBtn = getDefaultBtn({ isUploadFile, downloadBtnIndex });
 
   switch (res?.step) {
-    case "CREATE_TO_SCAN":
-      button.replaceWith(
-        "<span id='CREATE_TO_SCAN'>Create File To Scan,Please Wait.</span>"
-      );
-      setTimeout(function () {
-        $("#CREATE_TO_SCAN").replaceWith(button);
-      }, 6000);
-      break;
+    // case "CREATE_TO_SCAN":
+    //   button.replaceWith(
+    //     "<span id='CREATE_TO_SCAN'>Create File To Scan,Please Wait.</span>"
+    //   );
+    //   setTimeout(function () {
+    //     $("#CREATE_TO_SCAN").replaceWith(button);
+    //   }, 6000);
+    //   break;
 
-    case "NOT_CLEAN":
-      button.replaceWith(
-        "<span id='NOT_CLEAN'>Is Not Clean.You Can't Download it</span>"
-      );
+    case "ACTIVE_CHECK_SCAN":
+      setCheckStatusSpan(downloadBtnIndex);
       break;
 
     case "CLEAN":
-      const textButton = isUploadFile
-        ? "Clean To Upload File"
-        : "Clean To Download";
+      if (isUploadFile) {
+        resetUploadButton();
+      } else {
+        resetDownloadButton(downloadBtnIndex);
+      }
+      break;
 
-      button
-        .css({
-          "background-color": "darkgreen",
-        })
-        .text(textButton);
+    case "NOT_CLEAN":
+      errorClient({
+        msg: "Is Not Clean.You Can't Download it",
+        isUploadFile,
+        downloadBtnIndex,
+      });
       break;
 
     case "PROCESSING":
-      button.replaceWith(
-        "<span id='PROCESSING'>Processing, Please Wait.</span>"
-      );
-      setTimeout(function () {
-        button.text("Scanning, Check Again.").css({
-          "background-color": "darkorange",
-        });
-        $("#PROCESSING").replaceWith(button);
-        if (isUploadFile) {
-          // reset input for brows file again
-          $("#uploadInput").val("");
-        }
-      }, 6000);
+      if (isSetCheckStatusSpan(downloadBtnIndex)) {
+        // get checkStatusMsg
+        const checkStatusMsg = getCheckStatusMsg(downloadBtnIndex);
+        checkStatusMsg.text("Processing");
+      } else {
+        setCheckStatusSpan(downloadBtnIndex);
+      }
+      // button.replaceWith(
+      //   "<span id='PROCESSING'>Processing, Please Wait.</span>"
+      // );
+      // setTimeout(function () {
+      //   button.text("Scanning, Check Again.").css({
+      //     "background-color": "darkorange",
+      //   });
+      //   $("#PROCESSING").replaceWith(button);
+      //   if (isUploadFile) {
+      //     // reset input for brows file again
+      //     $("#uploadInput").val("");
+      //   }
+      // }, 6000);
 
       break;
 
     case "UPLOAD_SUCCESS":
-      $("#PROCESSING").replaceWith(button);
-      if (isUploadFile) {
-        // reset input for brows file again
-        resetUploadInput();
-      }
+      resetUploadButton();
       alert("Uploaded successfully.");
       break;
 
@@ -454,7 +585,7 @@ async function socketCheckFileIsClean(res) {
 }
 
 function uploadComplete() {
-  $("#uploadFileButton")
+  $(`#${uploadButtonId}`)
     .text(`Send File To Scan, wait...`)
     .css({
       "background-color": "gray",
@@ -462,13 +593,12 @@ function uploadComplete() {
     .prop("disabled", true);
 }
 
-function uploadProgress({ transmissionType, progress, buttonIndex }) {
-  const button = getOriginalBtn({
-    isUploadFile: transmissionType === "upload",
-    buttonIndex,
+function uploadProgress({ transmissionType, progress, downloadBtnIndex }) {
+  const button = getDefaultBtn({
+    downloadBtnIndex,
   });
   button
-    .text(`Upload For Scan ${progress}%`)
+    .text(`Uploading ${progress}%`)
     .css({
       "background-color": "gray",
     })
