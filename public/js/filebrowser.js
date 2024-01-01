@@ -53,6 +53,7 @@ async function renderFiles(data) {
   let dirs = data[0];
   let files = data[1];
   let directory = data[2];
+
   let baseName = directory.split("/").slice(-1)[0];
   let parentFolder = directory.replace(baseName, "");
 
@@ -89,8 +90,9 @@ async function renderFiles(data) {
   $("#filebrowser").data("directory", directory);
   $("#filebrowser").append($("<div>").text(directory));
   $("#filebrowser").append(table);
+
   if (dirs.length > 0) {
-    // if items are Directory
+    // render Directory
     for await (let dir of dirs) {
       let tableRow = $("<tr>");
       let dirClean = dir.replace("'", "|");
@@ -118,9 +120,9 @@ async function renderFiles(data) {
       table.append(tableRow);
     }
   }
-  if (files.length > 0) {
-    // if items are file
 
+  // render files
+  if (files.length > 0) {
     for await (let file of files) {
       let tableRow = $("<tr>");
       let fileClean = file.replace("'", "|");

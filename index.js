@@ -8,8 +8,8 @@
 // local for inside network
 const CUSTOM_USER = "radmehr.h@test1.local";
 const PASSWORD = "qqqqqq1!";
-const FILE_SERVER_HOST = "http://192.168.254.196:8001";
-const MANAGER_HOST = "http://192.168.254.198:8000";
+const FILE_SERVER_HOST = "http://192.168.1.107:8001"; // javad
+const MANAGER_HOST = "http://192.168.1.109:8000"; // hooman
 
 // local constiables for outside network
 // const CUSTOM_USER = "radmehr.h@npdco.local";
@@ -54,24 +54,13 @@ pulse.on("error", function (error) {
   );
 });
 
-// const {
-//   CUSTOM_USER,
-//   PASSWORD,
-//   FILE_SERVER_HOST,
-//   MANAGER_HOST,
-//   IS_ADMIN,
-//   SUBFOLDER,
-//   TITLE,
-//   FM_HOME,
-//   UPLOADED_FILE_PATH,
-// } = require("./constants.js");
-// Import My Methods //
 const {
   getFileHash,
   getFileExtensionFromName,
   getFileSize,
   handleErrorCatch,
   deleteIfUploadFileExist,
+  ifExistFile,
 } = require("./functions.js");
 
 //// Server Paths Main ////
@@ -160,30 +149,51 @@ io.on("connection", async function (socket) {
   }
 
   // Write client sent file
-  async function uploadFile({ render, directory, filePath }, OK) {
+  async function uploadFile({ render, filePath, directory }, OK) {
     console.log("run uploadFile.");
     if (OK !== "OK") {
       return;
     } // prevent upload form client
 
+    const fileName = filePath.split("/").slice(-1)[0];
+    const mFilePath = `${UPLOAD_DIRECTORY}${fileName}`;
+
+    console.log({
+      render,
+      fileName,
+      directory,
+      filePath,
+      mFilePath,
+      UPLOAD_DIRECTORY,
+    });
     // let directory = res.directory;
     // let filePath = res.filePath;
     // // let data = res.data;
     // let render = res.render;
     // let dirArr = filePath.split("/");
     // let folder = filePath.replace(dirArr[dirArr.length - 1], "");
+    // const resultUploaded = await moveFileToDirectory({
+    //   sourceFilePath: filePath,
+    //   targetDir: UPLOAD_DIRECTORY,
+    //   targetFilePath: mFilePath,
+    // });
+    // // await fsw.mkdir(folder, { recursive: true });
+    // // await fsw.writeFile(filePath, Buffer.from(data));
+    // if (resultUploaded) {
+    //   console.log("resultUploaded true");
+    // } else {
+    //   console.log("resultUploaded false");
 
-    await moveFileToDirectory(filePath, UPLOAD_DIRECTORY);
-    // await fsw.mkdir(folder, { recursive: true });
-    // await fsw.writeFile(filePath, Buffer.from(data));
-    if (render) {
-      getFiles(directory);
-    }
-    send("check-file-is-clean", {
-      downloadBtnIndex: false,
-      step: "UPLOAD_SUCCESS",
-      isUploadFile: true,
-    });
+    //   return;
+    // }
+    // if (render) {
+    //   getFiles(directory);
+    // }
+    // send("check-file-is-clean", {
+    //   downloadBtnIndex: false,
+    //   step: "UPLOAD_SUCCESS",
+    //   isUploadFile: true,
+    // });
   }
 
   // Delete files
@@ -298,7 +308,7 @@ io.on("connection", async function (socket) {
   }
 
   // request for check status
-  async function requestCheckFile({
+  async function requestGetCheckFile({
     fileName,
     fileHash,
     mimeType,
@@ -345,15 +355,27 @@ io.on("connection", async function (socket) {
           switch (status) {
             case "CLEAN":
               if (transmissionType === "upload") {
-                uploadFile(
-                  {
-                    directory: directoryPath,
-                    filePath: filePath,
-                    // data: res.file.data,
-                    render: false,
-                  },
-                  "OK"
-                );
+                uploadFileFromServerUrl({
+                  fileHash: data.file_hash,
+                })
+                  .then(() => {
+                    send("check-file-is-clean", {
+                      downloadBtnIndex: false,
+                      step: "UPLOAD_SUCCESS",
+                      isUploadFile: true,
+                    });
+                  })
+                  .catch((error) => {
+                    // Handle the error
+                    send("error-client", {
+                      msg: `upload failed.`,
+                      isUploadFile: true,
+                    });
+                    console.error(
+                      "Failed to download and save the file:",
+                      error
+                    );
+                  });
               } else if (transmissionType === "download") {
                 downloadFile({ file: filePath, fileName }, "OK");
               }
@@ -374,9 +396,16 @@ io.on("connection", async function (socket) {
                 step: "PROCESSING",
                 isUploadFile,
               });
-              if (isUploadFile) {
-                deleteIfUploadFileExist(filePath);
-              }
+
+              break;
+
+            case "TRY_AGAIN":
+              send("check-file-is-clean", {
+                downloadBtnIndex,
+                step: "PROCESSING",
+                isUploadFile,
+              });
+
               break;
 
             default:
@@ -384,17 +413,12 @@ io.on("connection", async function (socket) {
                 msg: `Contact Support. scan_result is: ${status}`,
                 isUploadFile,
               });
-              if (isUploadFile) {
-                deleteIfUploadFileExist(filePath);
-              }
+
               break;
           }
         }
       })
       .catch((error) => {
-        if (isUploadFile) {
-          deleteIfUploadFileExist(filePath);
-        }
         console.log(`on requestCheckFile:`, error.message);
         const dataError = handleErrorCatch(error);
         send("error-client", {
@@ -441,7 +465,7 @@ io.on("connection", async function (socket) {
       return;
     }
 
-    requestCheckFile({
+    requestGetCheckFile({
       fileName,
       fileHash,
       mimeType,
@@ -644,59 +668,18 @@ io.on("connection", async function (socket) {
     console.log("11-run createFileToScan.");
     let url = `${FILE_SERVER_HOST}/analyze/scan/`;
 
-    try {
-      fileBuffer = await fsw.readFile(filePath);
-    } catch (error) {
-      const msg = `on readFile:: ${error.message}`;
-      if (isUploadFile) {
-        deleteIfUploadFileExist(filePath);
-      }
-      send("error-client", {
-        msg,
-        isUploadFile,
-        downloadBtnIndex,
-      });
-      return false;
-    }
-
-    // if (!isUploadFile) {
-    //   try {
-    //     fileBuffer = await fsw.readFile(filePath);
-    //   } catch (error) {
-    //     const msg = `on readFile:: ${error.message}`;
-    //     send("error-client", {
-    //       msg,
-    //       isUploadFile,
-    //       downloadBtnIndex,
-    //     });
-    //     return false;
-    //   }
-    //   fileStream = fs.createReadStream(filePath);
-    // } else {
-    //   file = res?.file.data;
-    //   createFileTemp(filePath, file);
-
-    //   // Create a ReadStream from the temporary file
-    //   const readStream = fs.createReadStream(filePath);
-
-    //   fileStream = readStream;
-    // }
-    // file = res?.file.data;
-    // createFileTemp(filePath, file);
-
     // Create a ReadStream from the temporary file
     let readStream = null;
 
     try {
       readStream = fs.createReadStream(filePath);
     } catch (error) {
-      console.log("error on fs.createReadStream", { error });
-    }
-    // console.log({ readStream });
-    if (!readStream) {
       if (isUploadFile) {
         deleteIfUploadFileExist(filePath);
       }
+      console.log("error on fs.createReadStream", { error });
+    }
+    if (!readStream) {
       send("error-client", {
         msg,
         isUploadFile,
@@ -751,36 +734,95 @@ io.on("connection", async function (socket) {
           downloadBtnIndex,
         });
       });
+
     if (isUploadFile) {
       deleteIfUploadFileExist(filePath);
-      // removeFileTemporary(filePath);
     }
   }
 
-  // move File To Directory
-  // ex sourcePath = '/config/sound.mp3'
-  // ex targetDir = '/config/Desktop/upload/'
-  async function moveFileToDirectory(sourceFilePath, targetDir) {
-    console.log({ sourceFilePath, targetDir });
+  // upload file from server url
+  function uploadFileFromServerUrl({ fileHash }) {
+    console.log("run uploadFileFromServerUrl");
     try {
-      const baseName = path.basename(sourceFilePath);
-      const targetPath = path.join(targetDir, baseName);
-
-      // Check if the target directory exists
-      try {
-        fs.access(targetDir);
-      } catch (error) {
-        // If the target directory does not exist, create it
-        fs.mkdir(targetDir, { recursive: true });
-        console.log("--------fs.access", error.message);
+      if (!fs.existsSync(UPLOAD_DIRECTORY)) {
+        fs.mkdirSync(UPLOAD_DIRECTORY, { recursive: true });
       }
-      // Now copy the file
-      fs.copyFile(sourceFilePath, targetPath);
-      // Now delete the source file
-      fs.unlink(sourceFilePath);
-    } catch (err) {
-      console.error("An error occurred:", err);
+    } catch (error) {
+      console.log("------ on moveFileToDirectory", { error });
+      throw error;
     }
+
+    // // Extract the filename from the URL
+    const fileName = path.basename(UPLOADED_FILE_PATH);
+    const localFilePath = path.join(UPLOAD_DIRECTORY, fileName);
+
+    // Axios GET request for the file stream
+    return axios
+      .get(`${FILE_SERVER_HOST}/analyze/download/?file_hash=${fileHash}`, {
+        responseType: "stream",
+        auth: {
+          username: CUSTOM_USER,
+          password: PASSWORD,
+        },
+      })
+      .then((response) => {
+        // Create a write stream for the local file
+        const writer = fs.createWriteStream(localFilePath);
+
+        // // Pipe the data into the write stream
+        response.data.pipe(writer);
+
+        return new Promise((resolve, reject) => {
+          writer.on("finish", () => {
+            console.log(
+              `------------------ File downloaded and saved to ${localFilePath}`
+            );
+            resolve();
+          });
+          writer.on("error", reject);
+        });
+      })
+      .catch((error) => {
+        console.error("------------------- Error downloading the file:", error);
+        throw error;
+      });
+  }
+
+  // move File To Directory
+
+  async function moveFileToDirectory({
+    sourceFilePath,
+    targetDir,
+    targetFilePath,
+  }) {
+    console.log("||||||||", {
+      sourceFilePath,
+      targetDir,
+      targetFilePath,
+    });
+    try {
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+        console.log("Folder created successfully");
+      }
+    } catch (error) {
+      console.log("------ on moveFileToDirectory", { error });
+    }
+
+    // Copy the file
+    fs.copyFile(sourceFilePath, targetFilePath)
+      .then(() => {
+        console.log("--------- File copied successfully.");
+        // Once the file is copied, delete the original file
+        return fs.unlink(sourceFilePath);
+      })
+      .then(() => {
+        console.log("------------- Original file deleted successfully.");
+      })
+      .catch((error) => {
+        // Handle errors if any
+        console.error("An error occurred:", error);
+      });
   }
 
   // errorClient
@@ -797,7 +839,6 @@ io.on("connection", async function (socket) {
     currentChunk,
     totalChunks,
   }) {
-    console.log("------------", { chunkFileBuffer });
     chunkFileBuffer.push(Buffer.from(data));
     chunkFileSize += data.byteLength;
     const tempFileUploadPath = `${TEMP_DIRECTORY}${fileName}`;
@@ -843,7 +884,7 @@ io.on("connection", async function (socket) {
   async function set_request({ type, data }) {
     switch (type) {
       case "CHECK_STATUS":
-        requestCheckFile({
+        requestGetCheckFile({
           fileName: scannedFileInfo?.fileName,
           fileHash: scannedFileInfo?.fileHash,
           mimeType: scannedFileInfo?.mimeType,

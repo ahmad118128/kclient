@@ -4,8 +4,6 @@ var fs = require("fs");
 var fsw = fs.promises;
 const { exec } = require("child_process");
 
-const UPLOADED_FILE_PATH = "uploaded_file";
-
 // handle error response
 function handleErrorCatch(error) {
   const errorData = error?.response?.data?.error;
@@ -34,10 +32,6 @@ async function getFileHashHex(filePath) {
   if (fileBuffer) {
     const hashSum = crypto.createHash("md5");
     hashSum.update(fileBuffer);
-    // const hex = hashSum.digest("hex");
-    // const base64 = hashSum.digest("base64");
-    // const base64url = hashSum.digest("base64url");
-    // const binary = hashSum.digest("binary");
 
     return hashSum.digest("binary");
   }
@@ -96,17 +90,6 @@ async function createFileTemp(filePath, file) {
 async function getFileSize(filePath, file, transmissionType) {
   console.log("3-run getFileSize");
   let size = null;
-  // console.log({ filePath, file, transmissionType });
-  // return;
-
-  // try {
-  //   const stats = fs.statSync(filePath);
-  //   const fileSizeInBytes = stats.size;
-  //   size = bytesToMegabytes(fileSizeInBytes);
-  // } catch (error) {
-  //   console.error(`Error getting file size: ${error.message}`);
-  //   deleteIfUploadFileExist(filePath);
-  // }
 
   try {
     const stats = fs.statSync(filePath);
@@ -119,20 +102,6 @@ async function getFileSize(filePath, file, transmissionType) {
       removeFileTemporary(filePath);
     }
   }
-
-  // if (transmissionType === "download") {
-  //   try {
-  //     const stats = fs.statSync(filePath);
-  //     const fileSizeInBytes = stats.size;
-  //     size = bytesToMegabytes(fileSizeInBytes);
-  //   } catch (error) {
-  //     console.error(`Error getting file size: ${error.message}`);
-  //   }
-  // } else if (transmissionType === "upload") {
-  //   const fileSizeInBytes = await getFileSizeInMegaBytes(filePath);
-  //   size = fileSizeInBytes.toFixed(0);
-  //   // removeFileTemporary(filePath);
-  // }
 
   if (!size && transmissionType === "upload") {
     deleteIfUploadFileExist(filePath);
@@ -158,35 +127,28 @@ function bytesToMegabytes(bytes) {
   return bytes / (1024 * 1024);
 }
 
-async function deleteIfUploadFileExist(filePath) {
-  console.log("filePath on deleteIfUploadFileExist", filePath);
+async function ifExistFile(filePath) {
+  let result = false;
+
   try {
     const stats = fs.statSync(filePath);
     if (stats.isFile()) {
-      removeFileTemporary(filePath);
-      UPLOADED_FILE_PATH = null;
+      result = true;
     } else {
       console.log("not exist file in fs.statSync");
     }
   } catch (error) {
     console.log("on deleteIfUploadFileExist:", error.message);
   }
+  return result;
+}
 
-  // try {
-  //   // Check if the file exists
-  //   const stats = fs.stat(filePath);
-
-  //   // If fs.stat doesn't throw, the file exists, attempt to delete it
-  //   if (stats.isFile()) {
-  //     removeFileTemporary(filePath);
-  //     UPLOADED_FILE_PATH = null;
-  //   } else {
-  //     console.log("not exist file in fs.stat");
-  //   }
-  // } catch (error) {
-  //   console.log("on deleteIfUploadFileExist fs.stat:", error);
-  //   console.log("File uploaded not exist.");
-  // }
+async function deleteIfUploadFileExist(filePath) {
+  console.log("filePath on deleteIfUploadFileExist", filePath);
+  const hasFile = ifExistFile(filePath);
+  if (hasFile) {
+    removeFileTemporary(filePath);
+  }
 }
 
 module.exports = {
@@ -199,4 +161,5 @@ module.exports = {
   getFileHashHex,
   removeFileTemporary,
   deleteIfUploadFileExist,
+  ifExistFile,
 };
