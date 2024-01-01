@@ -1,15 +1,15 @@
 //// Application Variables ////
-// const CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
-// const PASSWORD = process.env.PASSWORD || "abc";
-// const FILE_SERVER_HOST =
-//   process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
-// const MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
+const CUSTOM_USER = process.env.CUSTOM_USER || "abc@abc.abc";
+const PASSWORD = process.env.PASSWORD || "abc";
+const FILE_SERVER_HOST =
+  process.env.FILE_SERVER_HOST || "http://192.168.200.2:8001";
+const MANAGER_HOST = process.env.MANAGER_HOST || "http://192.168.200.2:8000";
 
-// local for inside network
-const CUSTOM_USER = "radmehr.h@test1.local";
-const PASSWORD = "qqqqqq1!";
-const FILE_SERVER_HOST = "http://192.168.1.107:8001"; // javad
-const MANAGER_HOST = "http://192.168.1.109:8000"; // hooman
+// // local for inside network
+// const CUSTOM_USER = "radmehr.h@test1.local";
+// const PASSWORD = "qqqqqq1!";
+// const FILE_SERVER_HOST = "http://192.168.1.107:8001"; // javad
+// const MANAGER_HOST = "http://192.168.1.109:8000"; // hooman
 
 // local constiables for outside network
 // const CUSTOM_USER = "radmehr.h@npdco.local";
