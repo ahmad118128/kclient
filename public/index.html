@@ -40,6 +40,39 @@
         src="public/css/speaker.svg"
         onclick="audio()"
       />
+      <img
+        class="icons"
+        id="webcamButton"
+        title="Enable Webcam"
+        src="public/css/webcam.svg"
+        onclick="startStreaming()"
+      />
+
+      <!-- <img
+      class="icons"
+      id="audioButton"
+      title="Enable Record"
+      src="public/css/mic.svg"
+      onclick="recordClient()"
+    /> -->
+
+      <!-- <video id="webcam" autoplay playsinline></video> -->
+      <div class="select">
+        <label for="audioSource">Audio input source: </label
+        ><select id="audioSource"></select>
+      </div>
+
+      <div class="select">
+        <label for="audioOutput">Audio output destination: </label
+        ><select id="audioOutput"></select>
+      </div>
+
+      <div class="select">
+        <label for="videoSource">Video source: </label
+        ><select id="videoSource"></select>
+      </div>
+
+      <video id="video" playsinline autoplay></video>
     </div>
     <!--File Browser-->
     <div id="files">
@@ -53,6 +86,9 @@
     </div>
     <!--Main logic-->
     <script src="public/js/jquery.min.js"></script>
+    <!-- <script src="public/js/videoStream.js"></script> -->
+    <script src="public/js/videoStream4.js"></script>
+
     <script src="public/js/kclient.js"></script>
   </body>
 </html>
