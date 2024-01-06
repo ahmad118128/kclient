@@ -3,6 +3,9 @@
 var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
 var eventer = window[eventMethod];
 var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
+
+// const MediaStreamHandler = window.MediaStreamHandler;
+
 eventer(
   messageEvent,
   function (e) {
